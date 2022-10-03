@@ -1,6 +1,6 @@
 use std::cell::RefCell;
 
-use graphics::{Canvas, Color, Font, Path, Vec2};
+use flicker::{Canvas, Color, Font, Path, Vec2};
 use portlight::{Application, Rect, Window, WindowHandler, WindowOptions};
 
 struct Handler {

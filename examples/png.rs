@@ -1,4 +1,4 @@
-use graphics::{Canvas, Color, Mat2x2, Path, Transform, Vec2};
+use flicker::{Canvas, Color, Mat2x2, Path, Transform, Vec2};
 
 fn main() {
     let mut canvas = Canvas::with_size(1920, 1080);

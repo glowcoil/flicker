@@ -1,12 +1,12 @@
 [package]
-name = "graphics"
+name = "flicker"
 version = "0.1.0"
 authors = ["Micah Johnston <micah@glowcoil.com>"]
 edition = "2018"
 publish = false
 
 [dependencies]
-simd = { path = "../simd" }
+simd = { path = "simd" }
 swash = { version = "0.1.4", features = ["scale"], default_features = false }
 zeno = "0.2.2"
 crossbeam-channel = "0.5.2"
@@ -15,3 +15,8 @@ crossbeam-channel = "0.5.2"
 png = "0.11"
 portlight = { git = "https://github.com/coupler-rs/portlight", rev = "b2a925745733445adae8c6442ac66224527adea8" }
 usvg = "0.13.0"
+
+[workspace]
+members = [
+    "simd",
+]
