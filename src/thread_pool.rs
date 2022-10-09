@@ -1,125 +1,146 @@
 #![allow(dead_code)]
 
 use std::any::Any;
-use std::marker::PhantomData;
-use std::mem;
 use std::panic::{self, AssertUnwindSafe};
-use std::sync::{Condvar, Mutex};
+use std::ptr;
+use std::sync::atomic::{AtomicPtr, Ordering};
+use std::sync::{Arc, Barrier};
 use std::thread::{self, JoinHandle};
 
-use crossbeam_channel::Sender;
+struct Context {
+    barrier: Barrier,
+    task: AtomicPtr<*const (dyn Fn() + Sync)>,
+    panic: AtomicPtr<Box<dyn Any + Send>>,
+}
 
-type Task = Box<dyn FnOnce() + Send>;
+impl Context {
+    fn store_panic(&self, panic: Box<dyn Any + Send>) {
+        let panic_ptr = Box::into_raw(Box::new(panic));
+
+        let result = self.panic.compare_exchange(
+            ptr::null_mut(),
+            panic_ptr,
+            Ordering::Relaxed,
+            Ordering::Relaxed,
+        );
+
+        if result.is_err() {
+            drop(unsafe { Box::from_raw(panic_ptr) });
+        }
+    }
+}
 
 pub struct ThreadPool {
+    context: Arc<Context>,
     handles: Vec<JoinHandle<()>>,
-    sender: Option<Sender<Task>>,
 }
 
 impl ThreadPool {
     pub fn with_threads(num_threads: usize) -> ThreadPool {
-        assert!(num_threads != 0);
-
-        let (sender, receiver) = crossbeam_channel::unbounded::<Task>();
+        let context = Arc::new(Context {
+            barrier: Barrier::new(num_threads + 1),
+            task: AtomicPtr::new(ptr::null_mut()),
+            panic: AtomicPtr::new(ptr::null_mut()),
+        });
 
         let mut handles = Vec::with_capacity(num_threads);
         for _ in 0..num_threads {
-            let receiver = receiver.clone();
+            let context = context.clone();
 
-            let handle = thread::spawn(move || {
-                while let Ok(task) = receiver.recv() {
-                    task();
+            let handle = thread::spawn(move || loop {
+                context.barrier.wait();
+
+                let task_ptr = context.task.load(Ordering::Relaxed);
+                if task_ptr.is_null() {
+                    break;
                 }
+
+                let task = unsafe { &**task_ptr };
+                let result = panic::catch_unwind(AssertUnwindSafe(|| {
+                    task();
+                }));
+
+                if let Err(panic) = result {
+                    context.store_panic(panic);
+                }
+
+                context.barrier.wait();
             });
 
             handles.push(handle);
         }
 
-        ThreadPool {
-            handles,
-            sender: Some(sender),
-        }
+        ThreadPool { context, handles }
     }
 
-    pub fn scope<'s, F>(&self, f: F)
+    pub fn run<F>(&mut self, task: F)
     where
-        F: FnOnce(&Scope<'s>),
+        F: Fn() + Sync,
     {
-        let scope = Scope {
-            sender: self.sender.as_ref().unwrap().clone(),
-            task_count: Mutex::new(0),
-            zero_tasks: Condvar::new(),
-            panic: Mutex::new(None),
-            phantom: PhantomData,
-        };
+        let task_wide_ptr = &task as &(dyn Fn() + Sync) as *const (dyn Fn() + Sync);
+        let task_ptr =
+            &task_wide_ptr as *const *const (dyn Fn() + Sync) as *mut *const (dyn Fn() + Sync);
+        self.context.task.store(task_ptr, Ordering::Relaxed);
+
+        self.context.barrier.wait();
 
         let result = panic::catch_unwind(AssertUnwindSafe(|| {
-            f(&scope);
+            task();
         }));
 
-        {
-            let mut task_count = scope.task_count.lock().unwrap();
-            while *task_count != 0 {
-                task_count = scope.zero_tasks.wait(task_count).unwrap();
-            }
+        if let Err(panic) = result {
+            self.context.store_panic(panic);
         }
 
-        if let Some(err) = scope.panic.lock().unwrap().take() {
-            panic::resume_unwind(err);
-        }
+        self.context.barrier.wait();
 
-        if let Err(err) = result {
-            panic::resume_unwind(err);
+        self.context.task.store(ptr::null_mut(), Ordering::Relaxed);
+
+        let panic = self.context.panic.swap(ptr::null_mut(), Ordering::Relaxed);
+        if !panic.is_null() {
+            panic::resume_unwind(*unsafe { Box::from_raw(panic) });
         }
     }
 }
 
 impl Drop for ThreadPool {
     fn drop(&mut self) {
-        drop(self.sender.take());
+        self.context.barrier.wait();
 
-        for handle in self.handles.drain(0..self.handles.len()) {
+        for handle in self.handles.drain(..) {
             handle.join().unwrap();
         }
     }
 }
 
-pub struct Scope<'s> {
-    sender: Sender<Task>,
-    task_count: Mutex<usize>,
-    zero_tasks: Condvar,
-    panic: Mutex<Option<Box<dyn Any + Send>>>,
-    phantom: PhantomData<fn(&'s ())>,
-}
+#[cfg(test)]
+mod test {
+    use super::*;
 
-impl<'s> Scope<'s> {
-    pub fn spawn<F>(&self, task: F)
-    where
-        F: FnOnce(&Scope<'s>) + Send + 's,
-    {
-        let task: Box<dyn FnOnce() + Send> = Box::new(move || {
-            let result = panic::catch_unwind(AssertUnwindSafe(move || {
-                task(self);
-            }));
+    #[test]
+    fn thread_pool() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
 
-            {
-                let mut task_count = self.task_count.lock().unwrap();
-                *task_count -= 1;
-                if *task_count == 0 {
-                    self.zero_tasks.notify_one();
-                }
-            }
+        for num_threads in 0..4 {
+            let mut pool = ThreadPool::with_threads(num_threads);
 
-            if let Err(err) = result {
-                let mut panic = self.panic.lock().unwrap();
-                if panic.is_none() {
-                    *panic = Some(err);
-                }
-            }
+            let state = AtomicUsize::new(0);
+
+            pool.run(|| {
+                state.fetch_add(1, Ordering::Relaxed);
+            });
+
+            assert_eq!(state.load(Ordering::Relaxed), num_threads + 1);
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "panic in task")]
+    fn panic_propagation() {
+        let mut pool = ThreadPool::with_threads(8);
+
+        pool.run(|| {
+            panic!("panic in task");
         });
-        let task: Box<dyn FnOnce() + Send + 'static> = unsafe { mem::transmute(task) };
-
-        *self.task_count.lock().unwrap() += 1;
-        self.sender.send(task).unwrap();
     }
 }
