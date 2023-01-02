@@ -3,6 +3,7 @@ mod color;
 mod geom;
 mod path;
 mod raster;
+mod simd;
 mod text;
 mod thread_pool;
 
