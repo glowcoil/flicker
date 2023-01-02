@@ -122,7 +122,7 @@ impl Float for f32x8 {
 
             // Then, carry the total from the lower 4 lanes to the upper 4 lanes:
             let lower = _mm256_castps256_ps128(sum2);
-            let total = _mm_shuffle_ps(lower, _mm_setzero_ps(), 0xFF);
+            let total = _mm_shuffle_ps(lower, lower, 0xFF);
             let carry = _mm256_insertf128_ps(_mm256_setzero_ps(), total, 1);
             f32x8(_mm256_add_ps(sum2, carry))
         }
