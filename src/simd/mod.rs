@@ -1,6 +1,8 @@
 mod scalar;
 
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+mod avx2;
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 mod sse2;
 
 use std::fmt::Debug;
@@ -8,6 +10,8 @@ use std::ops::*;
 
 pub use scalar::Scalar;
 
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+pub use avx2::*;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 pub use sse2::*;
 
