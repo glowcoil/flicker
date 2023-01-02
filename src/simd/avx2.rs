@@ -199,7 +199,7 @@ impl Simd for u32x8 {
         unsafe { u32x8(_mm256_set1_epi32(value as i32)) }
     }
 
-    #[inline(always)]
+    #[inline]
     fn as_slice(&self) -> &[Self::Elem] {
         unsafe { slice::from_raw_parts(self as *const Self as *const Self::Elem, Self::LANES) }
     }
