@@ -79,6 +79,11 @@ impl Simd for f32x8 {
         unsafe { slice::from_raw_parts(self as *const Self as *const Self::Elem, Self::LANES) }
     }
 
+    #[inline]
+    fn as_mut_slice(&mut self) -> &mut [Self::Elem] {
+        unsafe { slice::from_raw_parts_mut(self as *mut Self as *mut Self::Elem, Self::LANES) }
+    }
+
     #[inline(always)]
     fn from_slice(slice: &[Self::Elem]) -> Self {
         assert!(slice.len() >= Self::LANES);
@@ -202,6 +207,11 @@ impl Simd for u32x8 {
     #[inline]
     fn as_slice(&self) -> &[Self::Elem] {
         unsafe { slice::from_raw_parts(self as *const Self as *const Self::Elem, Self::LANES) }
+    }
+
+    #[inline]
+    fn as_mut_slice(&mut self) -> &mut [Self::Elem] {
+        unsafe { slice::from_raw_parts_mut(self as *mut Self as *mut Self::Elem, Self::LANES) }
     }
 
     #[inline(always)]

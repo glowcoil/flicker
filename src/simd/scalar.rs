@@ -49,6 +49,11 @@ impl Simd for f32x1 {
     }
 
     #[inline]
+    fn as_mut_slice(&mut self) -> &mut [Self::Elem] {
+        slice::from_mut(&mut self.0)
+    }
+
+    #[inline]
     fn from_slice(slice: &[Self::Elem]) -> Self {
         f32x1(slice[0])
     }
@@ -141,6 +146,11 @@ impl Simd for u32x1 {
     #[inline]
     fn as_slice(&self) -> &[Self::Elem] {
         slice::from_ref(&self.0)
+    }
+
+    #[inline]
+    fn as_mut_slice(&mut self) -> &mut [Self::Elem] {
+        slice::from_mut(&mut self.0)
     }
 
     #[inline]

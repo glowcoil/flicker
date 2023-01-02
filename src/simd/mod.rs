@@ -28,6 +28,7 @@ pub trait Simd: Copy + Clone + Debug + Default + Send + Sync + Sized {
 
     fn splat(value: Self::Elem) -> Self;
     fn as_slice(&self) -> &[Self::Elem];
+    fn as_mut_slice(&mut self) -> &mut [Self::Elem];
     fn from_slice(slice: &[Self::Elem]) -> Self;
     fn write_to_slice(&self, slice: &mut [Self::Elem]);
 }
