@@ -103,12 +103,16 @@ impl Debug for f32x4 {
 impl Float for f32x4 {
     #[inline(always)]
     fn scan_sum(self) -> Self {
-        unsafe {
-            let shifted = _mm_castsi128_ps(_mm_slli_si128(_mm_castps_si128(self.0), 4));
-            let sum1 = _mm_add_ps(self.0, shifted);
+        #[inline]
+        #[target_feature(enable = "sse2")]
+        unsafe fn inner(value: f32x4) -> f32x4 {
+            let shifted = _mm_castsi128_ps(_mm_slli_si128(_mm_castps_si128(value.0), 4));
+            let sum1 = _mm_add_ps(value.0, shifted);
             let shifted = _mm_castsi128_ps(_mm_slli_si128(_mm_castps_si128(sum1), 8));
             f32x4(_mm_add_ps(sum1, shifted))
         }
+
+        unsafe { inner(self) }
     }
 }
 
