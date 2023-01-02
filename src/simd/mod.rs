@@ -69,6 +69,8 @@ pub trait Task {
 
 #[cfg(test)]
 mod tests {
+    use std::num::Wrapping;
+
     use super::*;
 
     struct TestF32;
@@ -159,7 +161,11 @@ mod tests {
             for chunk in values.chunks(A::f32::LANES) {
                 let result = -A::f32::from_slice(chunk);
                 for (&a, &b) in chunk.iter().zip(result.as_slice().iter()) {
-                    assert!((-a).to_bits() == b.to_bits(), "-{a} == {b}");
+                    let correct = -a;
+                    assert!(
+                        correct.to_bits() == b.to_bits(),
+                        "expected -{a} == {correct}, got {b}"
+                    );
                 }
             }
 
@@ -206,6 +212,85 @@ mod tests {
     fn avx2_f32() {
         if let Some(test) = Avx2::try_specialize::<TestF32>() {
             test(TestF32);
+        }
+    }
+
+    struct TestU32;
+
+    impl Task for TestU32 {
+        type Result = ();
+
+        #[inline(always)]
+        fn run<A: Arch>(self) {
+            let values = (0..64).collect::<Vec<u32>>();
+
+            for chunk in values.chunks(A::u32::LANES) {
+                for shift in 0..u32::BITS as usize * 2 {
+                    let result = A::u32::from_slice(chunk) << shift;
+                    for (&a, &b) in chunk.iter().zip(result.as_slice().iter()) {
+                        let correct = (Wrapping(a) << shift).0;
+                        assert!(
+                            correct == b,
+                            "expected {a} << {shift} == {correct}, got {b}"
+                        );
+                    }
+
+                    let result = A::u32::from_slice(chunk) >> shift;
+                    for (&a, &b) in chunk.iter().zip(result.as_slice().iter()) {
+                        let correct = (Wrapping(a) >> shift).0;
+                        assert!(
+                            correct == b,
+                            "expected {a} >> {shift} == {correct}, got {b}"
+                        );
+                    }
+                }
+            }
+
+            for chunk_a in values.chunks(A::u32::LANES) {
+                for chunk_b in values.chunks(A::u32::LANES) {
+                    let result = A::u32::from_slice(chunk_a) & A::u32::from_slice(chunk_b);
+                    for ((&a, &b), &c) in chunk_a
+                        .iter()
+                        .zip(chunk_b.iter())
+                        .zip(result.as_slice().iter())
+                    {
+                        let correct = a & b;
+                        assert!(correct == c, "expected {a} & {b} == {correct}, got {c}");
+                    }
+
+                    let result = A::u32::from_slice(chunk_a) | A::u32::from_slice(chunk_b);
+                    for ((&a, &b), &c) in chunk_a
+                        .iter()
+                        .zip(chunk_b.iter())
+                        .zip(result.as_slice().iter())
+                    {
+                        let correct = a | b;
+                        assert!(correct == c, "expected {a} | {b} == {correct}, got {c}");
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn scalar_u32() {
+        let test = Scalar::specialize::<TestU32>();
+        test(TestU32);
+    }
+
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    #[test]
+    fn sse2_u32() {
+        if let Some(test) = Sse2::try_specialize::<TestU32>() {
+            test(TestU32);
+        }
+    }
+
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    #[test]
+    fn avx2_u32() {
+        if let Some(test) = Avx2::try_specialize::<TestU32>() {
+            test(TestU32);
         }
     }
 }
