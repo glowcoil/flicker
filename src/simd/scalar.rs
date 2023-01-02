@@ -1,6 +1,7 @@
 #![allow(non_camel_case_types)]
 
 use std::fmt::{self, Debug};
+use std::num::Wrapping;
 use std::ops::*;
 use std::slice;
 
@@ -125,13 +126,13 @@ impl Neg for f32x1 {
 
 impl From<u32x1> for f32x1 {
     fn from(value: u32x1) -> f32x1 {
-        f32x1(value.0 as f32)
+        f32x1(value.0 .0 as f32)
     }
 }
 
 #[derive(Copy, Clone, Default)]
 #[repr(transparent)]
-struct u32x1(u32);
+struct u32x1(Wrapping<u32>);
 
 impl Simd for u32x1 {
     type Elem = u32;
@@ -140,27 +141,27 @@ impl Simd for u32x1 {
 
     #[inline]
     fn splat(value: Self::Elem) -> Self {
-        u32x1(value)
+        u32x1(Wrapping(value))
     }
 
     #[inline]
     fn as_slice(&self) -> &[Self::Elem] {
-        slice::from_ref(&self.0)
+        slice::from_ref(&self.0 .0)
     }
 
     #[inline]
     fn as_mut_slice(&mut self) -> &mut [Self::Elem] {
-        slice::from_mut(&mut self.0)
+        slice::from_mut(&mut self.0 .0)
     }
 
     #[inline]
     fn from_slice(slice: &[Self::Elem]) -> Self {
-        u32x1(slice[0])
+        u32x1(Wrapping(slice[0]))
     }
 
     #[inline]
     fn write_to_slice(&self, slice: &mut [Self::Elem]) {
-        slice[0] = self.0;
+        slice[0] = self.0 .0;
     }
 }
 
@@ -211,6 +212,6 @@ impl BitOr for u32x1 {
 
 impl From<f32x1> for u32x1 {
     fn from(value: f32x1) -> u32x1 {
-        u32x1(value.0 as u32)
+        u32x1(Wrapping(value.0 as u32))
     }
 }
