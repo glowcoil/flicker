@@ -44,11 +44,6 @@ impl Simd for f32x1 {
     }
 
     #[inline]
-    fn last(self) -> Self::Elem {
-        self.0
-    }
-
-    #[inline]
     fn as_slice(&self) -> &[Self::Elem] {
         slice::from_ref(&self.0)
     }
@@ -67,7 +62,7 @@ impl Simd for f32x1 {
 impl Debug for f32x1 {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt.debug_list().entry(&self.0).finish()
+        Debug::fmt(self.as_slice(), fmt)
     }
 }
 
@@ -144,11 +139,6 @@ impl Simd for u32x1 {
     }
 
     #[inline]
-    fn last(self) -> Self::Elem {
-        self.0
-    }
-
-    #[inline]
     fn as_slice(&self) -> &[Self::Elem] {
         slice::from_ref(&self.0)
     }
@@ -167,7 +157,7 @@ impl Simd for u32x1 {
 impl Debug for u32x1 {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt.debug_list().entry(&self.0).finish()
+        Debug::fmt(self.as_slice(), fmt)
     }
 }
 

@@ -1,9 +1,15 @@
 mod scalar;
 
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+mod sse2;
+
 use std::fmt::Debug;
 use std::ops::*;
 
 pub use scalar::Scalar;
+
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+pub use sse2::*;
 
 #[allow(non_camel_case_types)]
 pub trait Arch {
@@ -17,7 +23,6 @@ pub trait Simd: Copy + Clone + Debug + Default + Send + Sync + Sized {
     const LANES: usize;
 
     fn splat(value: Self::Elem) -> Self;
-    fn last(self) -> Self::Elem;
     fn as_slice(&self) -> &[Self::Elem];
     fn from_slice(slice: &[Self::Elem]) -> Self;
     fn write_to_slice(&self, slice: &mut [Self::Elem]);
