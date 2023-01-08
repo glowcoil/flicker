@@ -45,6 +45,11 @@ impl Simd for f32x1 {
     }
 
     #[inline]
+    fn last(&self) -> Self::Elem {
+        self.0
+    }
+
+    #[inline]
     fn as_slice(&self) -> &[Self::Elem] {
         slice::from_ref(&self.0)
     }
@@ -152,6 +157,11 @@ impl Simd for u32x1 {
     #[inline]
     fn splat(value: Self::Elem) -> Self {
         u32x1(Wrapping(value))
+    }
+
+    #[inline]
+    fn last(&self) -> Self::Elem {
+        self.0 .0
     }
 
     #[inline]

@@ -71,6 +71,11 @@ impl Simd for f32x4 {
         unsafe { f32x4(_mm_set1_ps(value)) }
     }
 
+    #[inline(always)]
+    fn last(&self) -> Self::Elem {
+        unsafe { _mm_cvtss_f32(_mm_shuffle_ps(self.0, self.0, 0x03)) }
+    }
+
     #[inline]
     fn as_slice(&self) -> &[Self::Elem] {
         unsafe { slice::from_raw_parts(self as *const Self as *const Self::Elem, Self::LANES) }
@@ -205,6 +210,11 @@ impl Simd for u32x4 {
     #[inline(always)]
     fn splat(value: Self::Elem) -> Self {
         unsafe { u32x4(_mm_set1_epi32(value as i32)) }
+    }
+
+    #[inline(always)]
+    fn last(&self) -> Self::Elem {
+        unsafe { _mm_cvtsi128_si32(_mm_shuffle_epi32(self.0, 0x03)) as u32 }
     }
 
     #[inline(always)]

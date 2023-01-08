@@ -27,6 +27,7 @@ pub trait Simd: Copy + Clone + Debug + Default + Send + Sync + Sized {
     const LANES: usize;
 
     fn splat(value: Self::Elem) -> Self;
+    fn last(&self) -> Self::Elem;
     fn as_slice(&self) -> &[Self::Elem];
     fn as_mut_slice(&mut self) -> &mut [Self::Elem];
     fn from_slice(slice: &[Self::Elem]) -> Self;
@@ -174,6 +175,13 @@ mod tests {
             }
 
             for chunk in values.chunks(A::f32::LANES) {
+                let result = A::f32::from_slice(chunk).last();
+                let correct = *chunk.last().unwrap();
+                assert!(
+                    correct.to_bits() == result.to_bits(),
+                    "expected {chunk:?}.last() == {correct}, got {result}"
+                );
+
                 let result = -A::f32::from_slice(chunk);
                 for (&a, &b) in chunk.iter().zip(result.as_slice().iter()) {
                     let correct = -a;
@@ -292,6 +300,15 @@ mod tests {
                         assert!(correct == c, "expected {a} | {b} == {correct}, got {c}");
                     }
                 }
+            }
+
+            for chunk in values.chunks(A::u32::LANES) {
+                let result = A::u32::from_slice(chunk).last();
+                let correct = *chunk.last().unwrap();
+                assert!(
+                    correct == result,
+                    "expected {chunk:?}.last() == {correct}, got {result}"
+                );
             }
         }
     }
