@@ -74,6 +74,11 @@ impl Debug for f32x1 {
 
 impl Float for f32x1 {
     #[inline]
+    fn abs(self) -> Self {
+        f32x1(self.0.abs())
+    }
+
+    #[inline]
     fn scan_sum(self) -> Self {
         self
     }

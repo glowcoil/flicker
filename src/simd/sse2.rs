@@ -107,6 +107,14 @@ impl Debug for f32x4 {
 
 impl Float for f32x4 {
     #[inline(always)]
+    fn abs(self) -> Self {
+        unsafe {
+            let mask = _mm_castsi128_ps(_mm_set1_epi32(!(1 << 31)));
+            f32x4(_mm_and_ps(mask, self.0))
+        }
+    }
+
+    #[inline(always)]
     fn scan_sum(self) -> Self {
         #[inline]
         #[target_feature(enable = "sse2")]

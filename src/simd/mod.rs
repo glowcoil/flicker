@@ -41,6 +41,7 @@ where
     Self: Div<Output = Self>,
     Self: Neg<Output = Self>,
 {
+    fn abs(self) -> Self;
     fn scan_sum(self) -> Self;
 }
 
@@ -165,6 +166,15 @@ mod tests {
                     assert!(
                         correct.to_bits() == b.to_bits(),
                         "expected -{a} == {correct}, got {b}"
+                    );
+                }
+
+                let result = A::f32::from_slice(chunk).abs();
+                for (&a, &b) in chunk.iter().zip(result.as_slice().iter()) {
+                    let correct = a.abs();
+                    assert!(
+                        correct.to_bits() == b.to_bits(),
+                        "expected {a}.abs() == {correct}, got {b}"
                     );
                 }
             }
