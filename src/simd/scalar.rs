@@ -79,6 +79,11 @@ impl Float for f32x1 {
     }
 
     #[inline]
+    fn min(self, rhs: Self) -> Self {
+        f32x1(if self.0 < rhs.0 { self.0 } else { rhs.0 })
+    }
+
+    #[inline]
     fn scan_sum(self) -> Self {
         self
     }

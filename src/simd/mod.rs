@@ -42,6 +42,7 @@ where
     Self: Neg<Output = Self>,
 {
     fn abs(self) -> Self;
+    fn min(self, rhs: Self) -> Self;
     fn scan_sum(self) -> Self;
 }
 
@@ -154,6 +155,19 @@ mod tests {
                         assert!(
                             correct.to_bits() == c.to_bits(),
                             "expected {a} / {b} == {correct}, got {c}"
+                        );
+                    }
+
+                    let result = A::f32::from_slice(chunk_a).min(A::f32::from_slice(chunk_b));
+                    for ((&a, &b), &c) in chunk_a
+                        .iter()
+                        .zip(chunk_b.iter())
+                        .zip(result.as_slice().iter())
+                    {
+                        let correct = if a < b { a } else { b };
+                        assert!(
+                            correct.to_bits() == c.to_bits(),
+                            "expected {a}.min({b}) == {correct}, got {c}"
                         );
                     }
                 }

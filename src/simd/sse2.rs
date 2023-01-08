@@ -115,6 +115,11 @@ impl Float for f32x4 {
     }
 
     #[inline(always)]
+    fn min(self, rhs: Self) -> Self {
+        unsafe { f32x4(_mm_min_ps(self.0, rhs.0)) }
+    }
+
+    #[inline(always)]
     fn scan_sum(self) -> Self {
         #[inline]
         #[target_feature(enable = "sse2")]
