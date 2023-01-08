@@ -44,6 +44,7 @@ impl Rasterizer {
         }
     }
 
+    #[inline]
     pub fn add_line(&mut self, p1: Vec2, p2: Vec2) {
         let mut x = (p1.x + 1.0) as isize - 1;
         let mut y = (p1.y + 1.0) as isize - 1;
