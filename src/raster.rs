@@ -1,6 +1,8 @@
-use crate::{geom::Vec2, Color};
+use std::mem;
+use std::sync::atomic::{AtomicPtr, Ordering};
 
-use simd::*;
+use crate::simd::*;
+use crate::{geom::Vec2, Color};
 
 const CELL_SIZE: usize = 4;
 const CELL_SIZE_BITS: usize = 2;
@@ -177,16 +179,64 @@ impl Rasterizer {
     }
 
     pub fn finish(&mut self, color: Color, data: &mut [u32], width: usize) {
+        struct Raster<'a, 'b> {
+            rasterizer: &'a mut Rasterizer,
+            color: Color,
+            data: &'b mut [u32],
+            width: usize,
+        }
+
+        impl<'a, 'b> Task for Raster<'a, 'b> {
+            type Result = ();
+
+            #[inline(always)]
+            fn run<A: Arch>(self) {
+                self.rasterizer
+                    .finish_inner::<A>(self.color, self.data, self.width);
+            }
+        }
+
+        static INNER: AtomicPtr<()> =
+            unsafe { AtomicPtr::new(mem::transmute(dispatch as fn(Raster))) };
+
+        fn dispatch(task: Raster) {
+            // Currently CELL_SIZE is hard-coded to 4
+            // let inner = if let Some(avx2) = Avx2::try_specialize::<Raster>() {
+            //     avx2
+            // } else {
+            //     Sse2::specialize::<Raster>()
+            // };
+
+            let inner = Sse2::specialize::<Raster>();
+
+            unsafe {
+                INNER.store(mem::transmute(inner), Ordering::Relaxed);
+            }
+
+            inner(task)
+        }
+
+        let inner: fn(Raster) = unsafe { mem::transmute(INNER.load(Ordering::Relaxed)) };
+        inner(Raster {
+            rasterizer: self,
+            color,
+            data,
+            width,
+        })
+    }
+
+    #[inline(always)]
+    fn finish_inner<A: Arch>(&mut self, color: Color, data: &mut [u32], width: usize) {
         let min_x = self.min_x.max(0) as usize;
         let min_y = self.min_y.max(0) as usize;
         let max_x = self.max_x.min(self.width as isize - 1) as usize;
         let max_y = self.max_y.min(self.height as isize - 1) as usize;
 
-        let a = f32x4::splat(color.a() as f32);
-        let a_unit = a * f32x4::splat(1.0 / 255.0);
-        let r = a_unit * f32x4::splat(color.r() as f32);
-        let g = a_unit * f32x4::splat(color.g() as f32);
-        let b = a_unit * f32x4::splat(color.b() as f32);
+        let a = A::f32::splat(color.a() as f32);
+        let a_unit = a * A::f32::splat(1.0 / 255.0);
+        let r = a_unit * A::f32::splat(color.r() as f32);
+        let g = a_unit * A::f32::splat(color.g() as f32);
+        let b = a_unit * A::f32::splat(color.b() as f32);
 
         for y in min_y..=max_y {
             let mut accum = 0.0;
@@ -214,20 +264,20 @@ impl Rasterizer {
                         } else if coverage > 0.5 / 255.0 {
                             let start = y * width + x;
                             let end = y * width + next_x;
-                            for pixels_slice in data[start..end].chunks_mut(4) {
-                                let mask = f32x4::splat(coverage);
-                                let pixels = u32x4::from_slice(pixels_slice);
+                            for pixels_slice in data[start..end].chunks_exact_mut(A::f32::LANES) {
+                                let mask = A::f32::splat(coverage);
+                                let pixels = A::u32::from_slice(pixels_slice);
 
-                                let dst_a = f32x4::from((pixels >> 24) & u32x4::splat(0xFF));
-                                let dst_r = f32x4::from((pixels >> 16) & u32x4::splat(0xFF));
-                                let dst_g = f32x4::from((pixels >> 8) & u32x4::splat(0xFF));
-                                let dst_b = f32x4::from((pixels >> 0) & u32x4::splat(0xFF));
+                                let dst_a = A::f32::from((pixels >> 24) & A::u32::splat(0xFF));
+                                let dst_r = A::f32::from((pixels >> 16) & A::u32::splat(0xFF));
+                                let dst_g = A::f32::from((pixels >> 8) & A::u32::splat(0xFF));
+                                let dst_b = A::f32::from((pixels >> 0) & A::u32::splat(0xFF));
 
-                                let inv_a = f32x4::splat(1.0) - mask * a_unit;
-                                let out_a = u32x4::from(mask * a + inv_a * dst_a);
-                                let out_r = u32x4::from(mask * r + inv_a * dst_r);
-                                let out_g = u32x4::from(mask * g + inv_a * dst_g);
-                                let out_b = u32x4::from(mask * b + inv_a * dst_b);
+                                let inv_a = A::f32::splat(1.0) - mask * a_unit;
+                                let out_a = A::u32::from(mask * a + inv_a * dst_a);
+                                let out_r = A::u32::from(mask * r + inv_a * dst_r);
+                                let out_g = A::u32::from(mask * g + inv_a * dst_g);
+                                let out_b = A::u32::from(mask * b + inv_a * dst_b);
 
                                 let out =
                                     (out_a << 24) | (out_r << 16) | (out_g << 8) | (out_b << 0);
@@ -246,29 +296,29 @@ impl Rasterizer {
                     let coverage_end = coverage_start + CELL_SIZE;
                     let coverage_slice = &mut self.coverage[coverage_start..coverage_end];
 
-                    let deltas = f32x4::from_slice(coverage_slice);
-                    let accums = f32x4::splat(accum) + deltas.scan();
-                    accum = accums.get::<3>();
-                    let mask = accums.abs().min(f32x4::splat(1.0));
-                    coverage = mask.get::<3>();
+                    let deltas = A::f32::from_slice(coverage_slice);
+                    let accums = A::f32::splat(accum) + deltas.scan_sum();
+                    accum = accums.last();
+                    let mask = accums.abs().min(A::f32::splat(1.0));
+                    coverage = mask.last();
 
                     coverage_slice.fill(0.0);
 
                     let pixels_start = y * width + x;
                     let pixels_end = pixels_start + CELL_SIZE;
                     let pixels_slice = &mut data[pixels_start..pixels_end];
-                    let pixels = u32x4::from_slice(pixels_slice);
+                    let pixels = A::u32::from_slice(pixels_slice);
 
-                    let dst_a = f32x4::from((pixels >> 24) & u32x4::splat(0xFF));
-                    let dst_r = f32x4::from((pixels >> 16) & u32x4::splat(0xFF));
-                    let dst_g = f32x4::from((pixels >> 8) & u32x4::splat(0xFF));
-                    let dst_b = f32x4::from((pixels >> 0) & u32x4::splat(0xFF));
+                    let dst_a = A::f32::from((pixels >> 24) & A::u32::splat(0xFF));
+                    let dst_r = A::f32::from((pixels >> 16) & A::u32::splat(0xFF));
+                    let dst_g = A::f32::from((pixels >> 8) & A::u32::splat(0xFF));
+                    let dst_b = A::f32::from((pixels >> 0) & A::u32::splat(0xFF));
 
-                    let inv_a = f32x4::splat(1.0) - mask * a_unit;
-                    let out_a = u32x4::from(mask * a + inv_a * dst_a);
-                    let out_r = u32x4::from(mask * r + inv_a * dst_r);
-                    let out_g = u32x4::from(mask * g + inv_a * dst_g);
-                    let out_b = u32x4::from(mask * b + inv_a * dst_b);
+                    let inv_a = A::f32::splat(1.0) - mask * a_unit;
+                    let out_a = A::u32::from(mask * a + inv_a * dst_a);
+                    let out_r = A::u32::from(mask * r + inv_a * dst_r);
+                    let out_g = A::u32::from(mask * g + inv_a * dst_g);
+                    let out_b = A::u32::from(mask * b + inv_a * dst_b);
 
                     let out = (out_a << 24) | (out_r << 16) | (out_g << 8) | (out_b << 0);
                     out.write_to_slice(pixels_slice);
