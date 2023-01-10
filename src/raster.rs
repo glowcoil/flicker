@@ -266,7 +266,7 @@ impl Rasterizer {
                             let end = y * width + next_x;
                             for pixels_slice in data[start..end].chunks_exact_mut(A::f32::LANES) {
                                 let mask = A::f32::splat(coverage);
-                                let pixels = A::u32::from_slice(pixels_slice);
+                                let pixels = A::u32::load(pixels_slice);
 
                                 let dst_a = A::f32::from((pixels >> 24) & A::u32::splat(0xFF));
                                 let dst_r = A::f32::from((pixels >> 16) & A::u32::splat(0xFF));
@@ -281,7 +281,7 @@ impl Rasterizer {
 
                                 let out =
                                     (out_a << 24) | (out_r << 16) | (out_g << 8) | (out_b << 0);
-                                out.write_to_slice(pixels_slice);
+                                out.store(pixels_slice);
                             }
                         }
                     }
@@ -296,7 +296,7 @@ impl Rasterizer {
                     let coverage_end = coverage_start + CELL_SIZE;
                     let coverage_slice = &mut self.coverage[coverage_start..coverage_end];
 
-                    let deltas = A::f32::from_slice(coverage_slice);
+                    let deltas = A::f32::load(coverage_slice);
                     let accums = A::f32::splat(accum) + deltas.scan_sum();
                     accum = accums.last();
                     let mask = accums.abs().min(A::f32::splat(1.0));
@@ -307,7 +307,7 @@ impl Rasterizer {
                     let pixels_start = y * width + x;
                     let pixels_end = pixels_start + CELL_SIZE;
                     let pixels_slice = &mut data[pixels_start..pixels_end];
-                    let pixels = A::u32::from_slice(pixels_slice);
+                    let pixels = A::u32::load(pixels_slice);
 
                     let dst_a = A::f32::from((pixels >> 24) & A::u32::splat(0xFF));
                     let dst_r = A::f32::from((pixels >> 16) & A::u32::splat(0xFF));
@@ -321,7 +321,7 @@ impl Rasterizer {
                     let out_b = A::u32::from(mask * b + inv_a * dst_b);
 
                     let out = (out_a << 24) | (out_r << 16) | (out_g << 8) | (out_b << 0);
-                    out.write_to_slice(pixels_slice);
+                    out.store(pixels_slice);
 
                     tile &= !(1 << (BITMASK_SIZE - 1 - index));
                     x += CELL_SIZE;

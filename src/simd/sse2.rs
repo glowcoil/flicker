@@ -87,14 +87,14 @@ impl Simd for f32x4 {
     }
 
     #[inline(always)]
-    fn from_slice(slice: &[Self::Elem]) -> Self {
+    fn load(slice: &[Self::Elem]) -> Self {
         assert!(slice.len() >= Self::LANES);
 
         unsafe { f32x4(_mm_loadu_ps(slice.as_ptr())) }
     }
 
     #[inline(always)]
-    fn write_to_slice(&self, slice: &mut [Self::Elem]) {
+    fn store(&self, slice: &mut [Self::Elem]) {
         assert!(slice.len() >= Self::LANES);
 
         unsafe {
@@ -228,14 +228,14 @@ impl Simd for u32x4 {
     }
 
     #[inline(always)]
-    fn from_slice(slice: &[Self::Elem]) -> Self {
+    fn load(slice: &[Self::Elem]) -> Self {
         assert!(slice.len() >= Self::LANES);
 
         unsafe { u32x4(_mm_loadu_si128(slice.as_ptr() as *const __m128i)) }
     }
 
     #[inline(always)]
-    fn write_to_slice(&self, slice: &mut [Self::Elem]) {
+    fn store(&self, slice: &mut [Self::Elem]) {
         assert!(slice.len() >= Self::LANES);
 
         unsafe {

@@ -30,8 +30,8 @@ pub trait Simd: Copy + Clone + Debug + Default + Send + Sync + Sized {
     fn last(&self) -> Self::Elem;
     fn as_slice(&self) -> &[Self::Elem];
     fn as_mut_slice(&mut self) -> &mut [Self::Elem];
-    fn from_slice(slice: &[Self::Elem]) -> Self;
-    fn write_to_slice(&self, slice: &mut [Self::Elem]);
+    fn load(slice: &[Self::Elem]) -> Self;
+    fn store(&self, slice: &mut [Self::Elem]);
 }
 
 pub trait Float: Sized
@@ -107,7 +107,7 @@ mod tests {
 
             for chunk_a in values.chunks(A::f32::LANES) {
                 for chunk_b in values.chunks(A::f32::LANES) {
-                    let result = A::f32::from_slice(chunk_a) + A::f32::from_slice(chunk_b);
+                    let result = A::f32::load(chunk_a) + A::f32::load(chunk_b);
                     for ((&a, &b), &c) in chunk_a
                         .iter()
                         .zip(chunk_b.iter())
@@ -120,7 +120,7 @@ mod tests {
                         );
                     }
 
-                    let result = A::f32::from_slice(chunk_a) - A::f32::from_slice(chunk_b);
+                    let result = A::f32::load(chunk_a) - A::f32::load(chunk_b);
                     for ((&a, &b), &c) in chunk_a
                         .iter()
                         .zip(chunk_b.iter())
@@ -133,7 +133,7 @@ mod tests {
                         );
                     }
 
-                    let result = A::f32::from_slice(chunk_a) * A::f32::from_slice(chunk_b);
+                    let result = A::f32::load(chunk_a) * A::f32::load(chunk_b);
                     for ((&a, &b), &c) in chunk_a
                         .iter()
                         .zip(chunk_b.iter())
@@ -146,7 +146,7 @@ mod tests {
                         );
                     }
 
-                    let result = A::f32::from_slice(chunk_a) / A::f32::from_slice(chunk_b);
+                    let result = A::f32::load(chunk_a) / A::f32::load(chunk_b);
                     for ((&a, &b), &c) in chunk_a
                         .iter()
                         .zip(chunk_b.iter())
@@ -159,7 +159,7 @@ mod tests {
                         );
                     }
 
-                    let result = A::f32::from_slice(chunk_a).min(A::f32::from_slice(chunk_b));
+                    let result = A::f32::load(chunk_a).min(A::f32::load(chunk_b));
                     for ((&a, &b), &c) in chunk_a
                         .iter()
                         .zip(chunk_b.iter())
@@ -175,14 +175,14 @@ mod tests {
             }
 
             for chunk in values.chunks(A::f32::LANES) {
-                let result = A::f32::from_slice(chunk).last();
+                let result = A::f32::load(chunk).last();
                 let correct = *chunk.last().unwrap();
                 assert!(
                     correct.to_bits() == result.to_bits(),
                     "expected {chunk:?}.last() == {correct}, got {result}"
                 );
 
-                let result = -A::f32::from_slice(chunk);
+                let result = -A::f32::load(chunk);
                 for (&a, &b) in chunk.iter().zip(result.as_slice().iter()) {
                     let correct = -a;
                     assert!(
@@ -191,7 +191,7 @@ mod tests {
                     );
                 }
 
-                let result = A::f32::from_slice(chunk).abs();
+                let result = A::f32::load(chunk).abs();
                 for (&a, &b) in chunk.iter().zip(result.as_slice().iter()) {
                     let correct = a.abs();
                     assert!(
@@ -208,8 +208,8 @@ mod tests {
             let values = (0..64).map(|x| x as f32).collect::<Vec<f32>>();
 
             for chunk in values.chunks(A::f32::LANES) {
-                let result = A::f32::from_slice(chunk).scan_sum();
-                let mut correct = A::f32::from_slice(chunk);
+                let result = A::f32::load(chunk).scan_sum();
+                let mut correct = A::f32::load(chunk);
                 let mut accum = 0.0;
                 for x in correct.as_mut_slice() {
                     accum += *x;
@@ -258,7 +258,7 @@ mod tests {
 
             for chunk in values.chunks(A::u32::LANES) {
                 for shift in 0..u32::BITS as usize * 2 {
-                    let result = A::u32::from_slice(chunk) << shift;
+                    let result = A::u32::load(chunk) << shift;
                     for (&a, &b) in chunk.iter().zip(result.as_slice().iter()) {
                         let correct = (Wrapping(a) << shift).0;
                         assert!(
@@ -267,7 +267,7 @@ mod tests {
                         );
                     }
 
-                    let result = A::u32::from_slice(chunk) >> shift;
+                    let result = A::u32::load(chunk) >> shift;
                     for (&a, &b) in chunk.iter().zip(result.as_slice().iter()) {
                         let correct = (Wrapping(a) >> shift).0;
                         assert!(
@@ -280,7 +280,7 @@ mod tests {
 
             for chunk_a in values.chunks(A::u32::LANES) {
                 for chunk_b in values.chunks(A::u32::LANES) {
-                    let result = A::u32::from_slice(chunk_a) & A::u32::from_slice(chunk_b);
+                    let result = A::u32::load(chunk_a) & A::u32::load(chunk_b);
                     for ((&a, &b), &c) in chunk_a
                         .iter()
                         .zip(chunk_b.iter())
@@ -290,7 +290,7 @@ mod tests {
                         assert!(correct == c, "expected {a} & {b} == {correct}, got {c}");
                     }
 
-                    let result = A::u32::from_slice(chunk_a) | A::u32::from_slice(chunk_b);
+                    let result = A::u32::load(chunk_a) | A::u32::load(chunk_b);
                     for ((&a, &b), &c) in chunk_a
                         .iter()
                         .zip(chunk_b.iter())
@@ -303,7 +303,7 @@ mod tests {
             }
 
             for chunk in values.chunks(A::u32::LANES) {
-                let result = A::u32::from_slice(chunk).last();
+                let result = A::u32::load(chunk).last();
                 let correct = *chunk.last().unwrap();
                 assert!(
                     correct == result,

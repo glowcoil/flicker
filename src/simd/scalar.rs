@@ -60,12 +60,12 @@ impl Simd for f32x1 {
     }
 
     #[inline]
-    fn from_slice(slice: &[Self::Elem]) -> Self {
+    fn load(slice: &[Self::Elem]) -> Self {
         f32x1(slice[0])
     }
 
     #[inline]
-    fn write_to_slice(&self, slice: &mut [Self::Elem]) {
+    fn store(&self, slice: &mut [Self::Elem]) {
         slice[0] = self.0;
     }
 }
@@ -175,12 +175,12 @@ impl Simd for u32x1 {
     }
 
     #[inline]
-    fn from_slice(slice: &[Self::Elem]) -> Self {
+    fn load(slice: &[Self::Elem]) -> Self {
         u32x1(Wrapping(slice[0]))
     }
 
     #[inline]
-    fn write_to_slice(&self, slice: &mut [Self::Elem]) {
+    fn store(&self, slice: &mut [Self::Elem]) {
         slice[0] = self.0 .0;
     }
 }
