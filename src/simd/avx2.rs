@@ -64,15 +64,17 @@ impl Default for f32x8 {
     }
 }
 
+impl From<f32> for f32x8 {
+    #[inline(always)]
+    fn from(value: f32) -> f32x8 {
+        unsafe { f32x8(_mm256_set1_ps(value)) }
+    }
+}
+
 impl Simd for f32x8 {
     type Elem = f32;
 
     const LANES: usize = 8;
-
-    #[inline(always)]
-    fn splat(value: Self::Elem) -> Self {
-        unsafe { f32x8(_mm256_set1_ps(value)) }
-    }
 
     #[inline(always)]
     fn last(&self) -> Self::Elem {
@@ -215,15 +217,17 @@ impl Default for u32x8 {
     }
 }
 
+impl From<u32> for u32x8 {
+    #[inline(always)]
+    fn from(value: u32) -> u32x8 {
+        unsafe { u32x8(_mm256_set1_epi32(value as i32)) }
+    }
+}
+
 impl Simd for u32x8 {
     type Elem = u32;
 
     const LANES: usize = 8;
-
-    #[inline(always)]
-    fn splat(value: Self::Elem) -> Self {
-        unsafe { u32x8(_mm256_set1_epi32(value as i32)) }
-    }
 
     #[inline(always)]
     fn last(&self) -> Self::Elem {

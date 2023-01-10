@@ -232,11 +232,11 @@ impl Rasterizer {
         let max_x = self.max_x.min(self.width as isize - 1) as usize;
         let max_y = self.max_y.min(self.height as isize - 1) as usize;
 
-        let a = A::f32::splat(color.a() as f32);
-        let a_unit = a * A::f32::splat(1.0 / 255.0);
-        let r = a_unit * A::f32::splat(color.r() as f32);
-        let g = a_unit * A::f32::splat(color.g() as f32);
-        let b = a_unit * A::f32::splat(color.b() as f32);
+        let a = A::f32::from(color.a() as f32);
+        let a_unit = a * A::f32::from(1.0 / 255.0);
+        let r = a_unit * A::f32::from(color.r() as f32);
+        let g = a_unit * A::f32::from(color.g() as f32);
+        let b = a_unit * A::f32::from(color.b() as f32);
 
         for y in min_y..=max_y {
             let mut accum = 0.0;
@@ -265,15 +265,15 @@ impl Rasterizer {
                             let start = y * width + x;
                             let end = y * width + next_x;
                             for pixels_slice in data[start..end].chunks_exact_mut(A::f32::LANES) {
-                                let mask = A::f32::splat(coverage);
+                                let mask = A::f32::from(coverage);
                                 let pixels = A::u32::load(pixels_slice);
 
-                                let dst_a = A::f32::from((pixels >> 24) & A::u32::splat(0xFF));
-                                let dst_r = A::f32::from((pixels >> 16) & A::u32::splat(0xFF));
-                                let dst_g = A::f32::from((pixels >> 8) & A::u32::splat(0xFF));
-                                let dst_b = A::f32::from((pixels >> 0) & A::u32::splat(0xFF));
+                                let dst_a = A::f32::from((pixels >> 24) & A::u32::from(0xFF));
+                                let dst_r = A::f32::from((pixels >> 16) & A::u32::from(0xFF));
+                                let dst_g = A::f32::from((pixels >> 8) & A::u32::from(0xFF));
+                                let dst_b = A::f32::from((pixels >> 0) & A::u32::from(0xFF));
 
-                                let inv_a = A::f32::splat(1.0) - mask * a_unit;
+                                let inv_a = A::f32::from(1.0) - mask * a_unit;
                                 let out_a = A::u32::from(mask * a + inv_a * dst_a);
                                 let out_r = A::u32::from(mask * r + inv_a * dst_r);
                                 let out_g = A::u32::from(mask * g + inv_a * dst_g);
@@ -297,9 +297,9 @@ impl Rasterizer {
                     let coverage_slice = &mut self.coverage[coverage_start..coverage_end];
 
                     let deltas = A::f32::load(coverage_slice);
-                    let accums = A::f32::splat(accum) + deltas.scan_sum();
+                    let accums = A::f32::from(accum) + deltas.scan_sum();
                     accum = accums.last();
-                    let mask = accums.abs().min(A::f32::splat(1.0));
+                    let mask = accums.abs().min(A::f32::from(1.0));
                     coverage = mask.last();
 
                     coverage_slice.fill(0.0);
@@ -309,12 +309,12 @@ impl Rasterizer {
                     let pixels_slice = &mut data[pixels_start..pixels_end];
                     let pixels = A::u32::load(pixels_slice);
 
-                    let dst_a = A::f32::from((pixels >> 24) & A::u32::splat(0xFF));
-                    let dst_r = A::f32::from((pixels >> 16) & A::u32::splat(0xFF));
-                    let dst_g = A::f32::from((pixels >> 8) & A::u32::splat(0xFF));
-                    let dst_b = A::f32::from((pixels >> 0) & A::u32::splat(0xFF));
+                    let dst_a = A::f32::from((pixels >> 24) & A::u32::from(0xFF));
+                    let dst_r = A::f32::from((pixels >> 16) & A::u32::from(0xFF));
+                    let dst_g = A::f32::from((pixels >> 8) & A::u32::from(0xFF));
+                    let dst_b = A::f32::from((pixels >> 0) & A::u32::from(0xFF));
 
-                    let inv_a = A::f32::splat(1.0) - mask * a_unit;
+                    let inv_a = A::f32::from(1.0) - mask * a_unit;
                     let out_a = A::u32::from(mask * a + inv_a * dst_a);
                     let out_r = A::u32::from(mask * r + inv_a * dst_r);
                     let out_g = A::u32::from(mask * g + inv_a * dst_g);

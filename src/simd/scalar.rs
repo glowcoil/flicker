@@ -34,15 +34,17 @@ impl Arch for ScalarImpl {
 #[repr(transparent)]
 struct f32x1(f32);
 
+impl From<f32> for f32x1 {
+    #[inline]
+    fn from(value: f32) -> f32x1 {
+        f32x1(value)
+    }
+}
+
 impl Simd for f32x1 {
     type Elem = f32;
 
     const LANES: usize = 1;
-
-    #[inline]
-    fn splat(value: Self::Elem) -> Self {
-        f32x1(value)
-    }
 
     #[inline]
     fn last(&self) -> Self::Elem {
@@ -149,15 +151,17 @@ impl From<u32x1> for f32x1 {
 #[repr(transparent)]
 struct u32x1(Wrapping<u32>);
 
+impl From<u32> for u32x1 {
+    #[inline]
+    fn from(value: u32) -> u32x1 {
+        u32x1(Wrapping(value))
+    }
+}
+
 impl Simd for u32x1 {
     type Elem = u32;
 
     const LANES: usize = 1;
-
-    #[inline]
-    fn splat(value: Self::Elem) -> Self {
-        u32x1(Wrapping(value))
-    }
 
     #[inline]
     fn last(&self) -> Self::Elem {

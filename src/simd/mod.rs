@@ -21,12 +21,14 @@ pub trait Arch {
     type u32: Simd<Elem = u32> + Int + From<Self::f32>;
 }
 
-pub trait Simd: Copy + Clone + Debug + Default + Send + Sync + Sized {
+pub trait Simd: Copy + Clone + Debug + Default + Send + Sync + Sized
+where
+    Self: From<Self::Elem>,
+{
     type Elem;
 
     const LANES: usize;
 
-    fn splat(value: Self::Elem) -> Self;
     fn last(&self) -> Self::Elem;
     fn as_slice(&self) -> &[Self::Elem];
     fn as_mut_slice(&mut self) -> &mut [Self::Elem];
