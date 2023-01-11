@@ -103,6 +103,51 @@ impl Simd for f32x4 {
             _mm_storeu_ps(slice.as_mut_ptr(), self.0);
         }
     }
+
+    #[inline(always)]
+    fn load_partial(slice: &[Self::Elem]) -> Self {
+        #[inline]
+        #[target_feature(enable = "sse2")]
+        unsafe fn inner(slice: &[f32]) -> f32x4 {
+            match slice.len() {
+                0 => f32x4(_mm_setzero_ps()),
+                1 => f32x4(_mm_setr_ps(slice[0], 0.0, 0.0, 0.0)),
+                2 => f32x4(_mm_setr_ps(slice[0], slice[1], 0.0, 0.0)),
+                3 => f32x4(_mm_setr_ps(slice[0], slice[1], slice[2], 0.0)),
+                _ => f32x4(_mm_loadu_ps(slice.as_ptr())),
+            }
+        }
+
+        unsafe { inner(slice) }
+    }
+
+    #[inline(always)]
+    fn store_partial(&self, slice: &mut [Self::Elem]) {
+        #[inline]
+        #[target_feature(enable = "sse2")]
+        unsafe fn inner(vector: f32x4, slice: &mut [f32]) {
+            match slice.len() {
+                0 => {}
+                1 => {
+                    slice[0] = _mm_cvtss_f32(vector.0);
+                }
+                2 => {
+                    slice[0] = _mm_cvtss_f32(vector.0);
+                    slice[1] = _mm_cvtss_f32(_mm_shuffle_ps(vector.0, vector.0, 0x01));
+                }
+                3 => {
+                    slice[0] = _mm_cvtss_f32(vector.0);
+                    slice[1] = _mm_cvtss_f32(_mm_shuffle_ps(vector.0, vector.0, 0x01));
+                    slice[2] = _mm_cvtss_f32(_mm_shuffle_ps(vector.0, vector.0, 0x02));
+                }
+                _ => {
+                    _mm_storeu_ps(slice.as_mut_ptr(), vector.0);
+                }
+            }
+        }
+
+        unsafe { inner(*self, slice) }
+    }
 }
 
 impl Debug for f32x4 {
@@ -245,6 +290,56 @@ impl Simd for u32x4 {
         unsafe {
             _mm_storeu_si128(slice.as_mut_ptr() as *mut __m128i, self.0);
         }
+    }
+
+    #[inline(always)]
+    fn load_partial(slice: &[Self::Elem]) -> Self {
+        #[inline]
+        #[target_feature(enable = "sse2")]
+        unsafe fn inner(slice: &[u32]) -> u32x4 {
+            match slice.len() {
+                0 => u32x4(_mm_setzero_si128()),
+                1 => u32x4(_mm_setr_epi32(slice[0] as i32, 0, 0, 0)),
+                2 => u32x4(_mm_setr_epi32(slice[0] as i32, slice[1] as i32, 0, 0)),
+                3 => u32x4(_mm_setr_epi32(
+                    slice[0] as i32,
+                    slice[1] as i32,
+                    slice[2] as i32,
+                    0,
+                )),
+                _ => u32x4(_mm_loadu_si128(slice.as_ptr() as *const __m128i)),
+            }
+        }
+
+        unsafe { inner(slice) }
+    }
+
+    #[inline(always)]
+    fn store_partial(&self, slice: &mut [Self::Elem]) {
+        #[inline]
+        #[target_feature(enable = "sse2")]
+        unsafe fn inner(vector: u32x4, slice: &mut [u32]) {
+            match slice.len() {
+                0 => {}
+                1 => {
+                    slice[0] = _mm_cvtsi128_si32(vector.0) as u32;
+                }
+                2 => {
+                    slice[0] = _mm_cvtsi128_si32(vector.0) as u32;
+                    slice[1] = _mm_cvtsi128_si32(_mm_shuffle_epi32(vector.0, 0x01)) as u32;
+                }
+                3 => {
+                    slice[0] = _mm_cvtsi128_si32(vector.0) as u32;
+                    slice[1] = _mm_cvtsi128_si32(_mm_shuffle_epi32(vector.0, 0x01)) as u32;
+                    slice[2] = _mm_cvtsi128_si32(_mm_shuffle_epi32(vector.0, 0x02)) as u32;
+                }
+                _ => {
+                    _mm_storeu_si128(slice.as_mut_ptr() as *mut __m128i, vector.0);
+                }
+            }
+        }
+
+        unsafe { inner(*self, slice) }
     }
 }
 

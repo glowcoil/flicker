@@ -34,6 +34,8 @@ where
     fn as_mut_slice(&mut self) -> &mut [Self::Elem];
     fn load(slice: &[Self::Elem]) -> Self;
     fn store(&self, slice: &mut [Self::Elem]);
+    fn load_partial(slice: &[Self::Elem]) -> Self;
+    fn store_partial(&self, slice: &mut [Self::Elem]);
 }
 
 pub trait Float: Sized
@@ -224,6 +226,18 @@ mod tests {
                     .all(|(a, b)| a == b);
                 assert!(equal, "scan_sum() failed\n   input: {chunk:?}\nexpected: {correct:?}\n     got: {result:?}");
             }
+
+            for lanes in 0..A::f32::LANES {
+                let mut arr = vec![1.0; A::f32::LANES];
+                A::f32::load_partial(&arr[..lanes]).store(&mut arr);
+                assert_eq!(arr.iter().sum::<f32>() as usize, lanes);
+            }
+
+            for lanes in 0..A::f32::LANES {
+                let mut arr = vec![0.0; A::f32::LANES];
+                A::f32::from(1.0).store_partial(&mut arr[..lanes]);
+                assert_eq!(arr.iter().sum::<f32>() as usize, lanes);
+            }
         }
     }
 
@@ -311,6 +325,18 @@ mod tests {
                     correct == result,
                     "expected {chunk:?}.last() == {correct}, got {result}"
                 );
+            }
+
+            for lanes in 0..A::u32::LANES {
+                let mut arr = vec![1; A::u32::LANES];
+                A::u32::load_partial(&arr[..lanes]).store(&mut arr);
+                assert_eq!(arr.iter().sum::<u32>() as usize, lanes);
+            }
+
+            for lanes in 0..A::u32::LANES {
+                let mut arr = vec![0; A::u32::LANES];
+                A::u32::from(1).store_partial(&mut arr[..lanes]);
+                assert_eq!(arr.iter().sum::<u32>() as usize, lanes);
             }
         }
     }

@@ -70,6 +70,18 @@ impl Simd for f32x1 {
     fn store(&self, slice: &mut [Self::Elem]) {
         slice[0] = self.0;
     }
+
+    #[inline]
+    fn load_partial(slice: &[Self::Elem]) -> Self {
+        f32x1(slice.first().copied().unwrap_or(0.0))
+    }
+
+    #[inline]
+    fn store_partial(&self, slice: &mut [Self::Elem]) {
+        if let Some(first) = slice.first_mut() {
+            *first = self.0;
+        }
+    }
 }
 
 impl Debug for f32x1 {
@@ -186,6 +198,18 @@ impl Simd for u32x1 {
     #[inline]
     fn store(&self, slice: &mut [Self::Elem]) {
         slice[0] = self.0 .0;
+    }
+
+    #[inline]
+    fn load_partial(slice: &[Self::Elem]) -> Self {
+        u32x1(Wrapping(slice.first().copied().unwrap_or(0)))
+    }
+
+    #[inline]
+    fn store_partial(&self, slice: &mut [Self::Elem]) {
+        if let Some(first) = slice.first_mut() {
+            *first = self.0 .0;
+        }
     }
 }
 
