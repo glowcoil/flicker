@@ -27,6 +27,7 @@ pub enum Command {
 }
 
 impl Path {
+    #[inline]
     pub fn new() -> Path {
         Path {
             verbs: Vec::new(),
@@ -34,18 +35,21 @@ impl Path {
         }
     }
 
+    #[inline]
     pub fn move_to(&mut self, point: Vec2) -> &mut Self {
         self.verbs.push(Verb::Move);
         self.points.push(point);
         self
     }
 
+    #[inline]
     pub fn line_to(&mut self, point: Vec2) -> &mut Self {
         self.verbs.push(Verb::Line);
         self.points.push(point);
         self
     }
 
+    #[inline]
     pub fn quadratic_to(&mut self, control: Vec2, point: Vec2) -> &mut Self {
         self.verbs.push(Verb::Quadratic);
         self.points.push(control);
@@ -53,6 +57,7 @@ impl Path {
         self
     }
 
+    #[inline]
     pub fn cubic_to(&mut self, control1: Vec2, control2: Vec2, point: Vec2) -> &mut Self {
         self.verbs.push(Verb::Cubic);
         self.points.push(control1);
@@ -61,6 +66,7 @@ impl Path {
         self
     }
 
+    #[inline]
     pub fn arc(&mut self, radius: f32, start_angle: f32, end_angle: f32) -> &mut Self {
         let mut last = self.points.last().cloned().unwrap_or(Vec2::new(0.0, 0.0));
         let mut vector = Vec2::new(start_angle.cos(), start_angle.sin());
@@ -102,11 +108,13 @@ impl Path {
         self
     }
 
+    #[inline]
     pub fn close(&mut self) -> &mut Self {
         self.verbs.push(Verb::Close);
         self
     }
 
+    #[inline]
     pub fn push(&mut self, command: Command) {
         match command {
             Command::Move(point) => {
@@ -127,6 +135,7 @@ impl Path {
         }
     }
 
+    #[inline]
     pub(crate) fn flatten(&self, mut sink: impl FnMut(Command)) {
         let mut last = Vec2::new(0.0, 0.0);
         let mut points = self.points.iter();
@@ -182,6 +191,7 @@ impl Path {
         }
     }
 
+    #[inline]
     pub(crate) fn stroke(&self, width: f32) -> Path {
         #[inline]
         fn join(path: &mut Path, width: f32, prev_normal: Vec2, next_normal: Vec2, point: Vec2) {
