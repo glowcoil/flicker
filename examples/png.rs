@@ -1,12 +1,23 @@
 use flicker::{Canvas, Color, Mat2x2, Path, Transform, Vec2};
 
+enum Style {
+    Fill,
+    Stroke(f32),
+}
+
+struct Command {
+    path: Path,
+    style: Style,
+    color: Color,
+}
+
 fn main() {
     let mut canvas = Canvas::with_size(1920, 1080);
 
     let path = std::env::args().nth(1).expect("provide an svg file");
     let tree = usvg::Tree::from_file(path, &usvg::Options::default()).unwrap();
 
-    fn render(node: &usvg::Node, canvas: &mut Canvas) {
+    fn build_list(node: &usvg::Node, commands: &mut Vec<Command>) {
         use usvg::NodeExt;
         match *node.borrow() {
             usvg::NodeKind::Path(ref p) => {
@@ -59,7 +70,7 @@ fn main() {
                     if let usvg::Paint::Color(color) = fill.paint {
                         let color =
                             Color::rgba(color.red, color.green, color.blue, fill.opacity.to_u8());
-                        canvas.fill_path(&path, color);
+                        commands.push(Command { path: path.clone(), style: Style::Fill, color });
                     }
                 }
 
@@ -67,7 +78,7 @@ fn main() {
                     if let usvg::Paint::Color(color) = stroke.paint {
                         let color =
                             Color::rgba(color.red, color.green, color.blue, stroke.opacity.to_u8());
-                        canvas.stroke_path(&path, stroke.width.value() as f32, color);
+                        commands.push(Command { path, style: Style::Stroke(stroke.width.value() as f32), color });
                     }
                 }
             }
@@ -75,12 +86,27 @@ fn main() {
         }
 
         for child in node.children() {
-            render(&child, canvas);
+            build_list(&child, commands);
         }
     }
 
+    fn render(commands: &[Command], canvas: &mut Canvas) {
+        for command in commands {
+            match command.style {
+                Style::Fill => {
+                    canvas.fill_path(&command.path, command.color);
+                }
+                Style::Stroke(width) => {
+                    canvas.stroke_path(&command.path, width, command.color);
+                }
+            }
+        }
+    }
+
+    let mut commands = Vec::new();
+    build_list(&tree.root(), &mut commands);
     let time = std::time::Instant::now();
-    render(&tree.root(), &mut canvas);
+    render(&commands, &mut canvas);
     dbg!(time.elapsed());
 
     use png::HasParameters;
