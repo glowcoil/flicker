@@ -46,16 +46,19 @@ impl Canvas {
 
         let (min, max) = path.bounds();
 
-        let min = Vec2::new(min.x.floor(), min.y.floor());
-        let max = Vec2::new(max.x.ceil(), max.y.ceil());
+        let min_x = (min.x as isize).max(0).min(self.width as isize) as usize;
+        let min_y = (min.y as isize).max(0).min(self.width as isize) as usize;
+        let max_x = ((max.x + 1.0) as isize).max(0).min(self.width as isize) as usize;
+        let max_y = ((max.y + 1.0) as isize).max(0).min(self.height as isize) as usize;
 
-        let canvas_min = Vec2::new(0.0, 0.0);
-        let canvas_max = Vec2::new(self.width as f32, self.height as f32);
-        let min = min.max(canvas_min).min(canvas_max);
-        let max = max.max(canvas_min).min(canvas_max);
+        if max_x <= min_x || max_y <= min_y {
+            return;
+        }
 
-        let path_width = (max.x as usize - min.x as usize).max(1);
-        let path_height = (max.y as usize - min.y as usize).max(1);
+        let path_width = max_x - min_x + 4;
+        let path_height = max_y - min_y;
+
+        let offset = Vec2::new(min_x as f32, min_y as f32);
 
         self.rasterizer.set_size(path_width, path_height);
 
@@ -68,11 +71,11 @@ impl Canvas {
                 last = point;
             }
             Command::Line(point) => {
-                self.rasterizer.add_line(last - min, point - min);
+                self.rasterizer.add_line(last - offset, point - offset);
                 last = point;
             }
             Command::Close => {
-                self.rasterizer.add_line(last - min, first - min);
+                self.rasterizer.add_line(last - offset, first - offset);
                 last = first;
             }
             _ => {
@@ -80,13 +83,12 @@ impl Canvas {
             }
         });
         if last != first {
-            self.rasterizer.add_line(last - min, first - min);
+            self.rasterizer.add_line(last - offset, first - offset);
         }
 
-        let data_start = min.y as usize * self.width + min.x as usize;
-        let data_end = max.y as usize * self.width;
+        let data_start = min_y * self.width + min_x;
         self.rasterizer
-            .finish(color, &mut self.data[data_start..data_end], self.width);
+            .finish(color, &mut self.data[data_start..], self.width);
     }
 
     pub fn stroke_path(&mut self, path: &Path, width: f32, color: Color) {
