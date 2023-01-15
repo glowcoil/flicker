@@ -61,6 +61,13 @@ impl Rasterizer {
         let x_end = (p2.x + 1.0) as isize - 1;
         let y_end = (p2.y + 1.0) as isize - 1;
 
+        if (x >= self.width as isize && x_end >= self.width as isize)
+            || (y >= self.height as isize && y_end >= self.height as isize)
+            || (y < 0 && y_end < 0)
+        {
+            return;
+        }
+
         let x_inc;
         let mut x_offset;
         let x_offset_end;
@@ -208,6 +215,7 @@ impl Rasterizer {
             //     Sse2::specialize::<Raster>()
             // };
 
+            // let inner = Avx2::try_specialize::<Raster>().unwrap();
             let inner = Sse2::specialize::<Raster>();
 
             unsafe {
