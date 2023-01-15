@@ -39,7 +39,7 @@ impl Rasterizer {
             coverage: vec![0.0; width_rounded * height],
             bitmasks_width,
             bitmasks,
-            min_x: width_rounded as isize >> CELL_SIZE_BITS,
+            min_x: width_rounded as isize,
             min_y: height as isize,
             max_x: 0,
             max_y: 0,
@@ -328,7 +328,7 @@ impl Rasterizer {
             }
         }
 
-        self.min_x = self.width as isize >> CELL_SIZE_BITS;
+        self.min_x = self.width as isize;
         self.min_y = self.height as isize;
         self.max_x = 0;
         self.max_y = 0;
