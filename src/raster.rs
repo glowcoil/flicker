@@ -68,6 +68,13 @@ impl Rasterizer {
             return;
         }
 
+        if x == x_end && y == y_end {
+            let height = p2.y - p1.y;
+            let area = 0.5 * height * ((p1.x - x as f32) + (p2.x - x as f32));
+            self.add_delta(x, y, height, area);
+            return;
+        }
+
         let x_inc;
         let mut x_offset;
         let x_offset_end;
