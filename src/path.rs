@@ -41,6 +41,22 @@ impl Path {
     }
 
     #[inline]
+    pub fn bounds(&self) -> (Vec2, Vec2) {
+        if self.is_empty() {
+            return (Vec2::new(0.0, 0.0), Vec2::new(0.0, 0.0));
+        }
+
+        let mut min = *self.points.first().unwrap();
+        let mut max = *self.points.first().unwrap();
+        for &point in self.points.iter() {
+            min = min.min(point);
+            max = max.max(point);
+        }
+
+        (min, max)
+    }
+
+    #[inline]
     pub fn move_to(&mut self, point: Vec2) -> &mut Self {
         self.verbs.push(Verb::Move);
         self.points.push(point);

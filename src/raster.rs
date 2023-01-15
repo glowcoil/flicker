@@ -12,38 +12,45 @@ const BITMASK_SIZE_BITS: usize = 6;
 
 pub struct Rasterizer {
     width: usize,
+    // width padded to next multiple of cell size
+    width_padded: usize,
     height: usize,
     coverage: Vec<f32>,
     bitmasks_width: usize,
     bitmasks: Vec<u64>,
-    min_x: isize,
-    min_y: isize,
-    max_x: isize,
-    max_y: isize,
+}
+
+/// Pad width to next multiple of cell size.
+fn pad_width(width: usize) -> usize {
+    (width + CELL_SIZE - 1) & !(CELL_SIZE - 1)
+}
+
+/// Round up to integer number of bitmasks.
+fn bitmask_count_for_width(width: usize) -> usize {
+    (width + (CELL_SIZE * BITMASK_SIZE) - 1) >> (CELL_SIZE_BITS + BITMASK_SIZE_BITS)
 }
 
 impl Rasterizer {
     pub fn with_size(width: usize, height: usize) -> Rasterizer {
-        // round width up to next multiple of tile size
-        let width_rounded = (width + CELL_SIZE - 1) & !(CELL_SIZE - 1);
-
-        // round up to next multiple of bitmask size
-        let bitmasks_width = (width_rounded + (CELL_SIZE * BITMASK_SIZE) - 1)
-            >> (CELL_SIZE_BITS + BITMASK_SIZE_BITS);
-        let bitmasks_height = height;
-        let bitmasks = vec![0; bitmasks_width * bitmasks_height];
+        let width_padded = pad_width(width);
+        let bitmasks_width = bitmask_count_for_width(width);
 
         Rasterizer {
-            width: width_rounded,
+            width,
+            width_padded,
             height,
-            coverage: vec![0.0; width_rounded * height],
+            coverage: vec![0.0; width_padded * height],
             bitmasks_width,
-            bitmasks,
-            min_x: width_rounded as isize,
-            min_y: height as isize,
-            max_x: 0,
-            max_y: 0,
+            bitmasks: vec![0; bitmasks_width * height],
         }
+    }
+
+    pub fn set_size(&mut self, width: usize, height: usize) {
+        self.width = width;
+        self.width_padded = pad_width(width);
+        self.bitmasks_width = bitmask_count_for_width(width);
+
+        self.height = height;
     }
 
     #[inline]
@@ -53,11 +60,6 @@ impl Rasterizer {
 
         let x_end = (p2.x + 1.0) as isize - 1;
         let y_end = (p2.y + 1.0) as isize - 1;
-
-        self.min_x = self.min_x.min(x).min(x_end);
-        self.min_y = self.min_y.min(y).min(y_end);
-        self.max_x = self.max_x.max(x + 1).max(x_end + 1);
-        self.max_y = self.max_y.max(y).max(y_end);
 
         let x_inc;
         let mut x_offset;
@@ -161,7 +163,7 @@ impl Rasterizer {
         }
 
         if x < 0 {
-            let coverage_index = y as usize * self.width;
+            let coverage_index = y as usize * self.width_padded;
             self.coverage[coverage_index] += height;
 
             self.mark_cell(0, y as usize);
@@ -169,7 +171,7 @@ impl Rasterizer {
             return;
         }
 
-        let coverage_index = y as usize * self.width + x as usize;
+        let coverage_index = y as usize * self.width_padded + x as usize;
         self.coverage[coverage_index] += area;
         self.coverage[coverage_index + 1] += height - area;
 
@@ -177,12 +179,12 @@ impl Rasterizer {
         self.mark_cell(x as usize + 1, y as usize);
     }
 
-    pub fn finish(&mut self, color: Color, data: &mut [u32], width: usize) {
+    pub fn finish(&mut self, color: Color, data: &mut [u32], stride: usize) {
         struct Raster<'a, 'b> {
             rasterizer: &'a mut Rasterizer,
             color: Color,
             data: &'b mut [u32],
-            width: usize,
+            stride: usize,
         }
 
         impl<'a, 'b> Task for Raster<'a, 'b> {
@@ -191,7 +193,7 @@ impl Rasterizer {
             #[inline(always)]
             fn run<A: Arch>(self) {
                 self.rasterizer
-                    .finish_inner::<A>(self.color, self.data, self.width);
+                    .finish_inner::<A>(self.color, self.data, self.stride);
             }
         }
 
@@ -220,49 +222,42 @@ impl Rasterizer {
             rasterizer: self,
             color,
             data,
-            width,
+            stride,
         })
     }
 
     #[inline(always)]
-    fn finish_inner<A: Arch>(&mut self, color: Color, data: &mut [u32], width: usize) {
-        let min_x = self.min_x.max(0) as usize;
-        let min_y = self.min_y.max(0) as usize;
-        let max_x = self.max_x.min(self.width as isize - 1) as usize;
-        let max_y = self.max_y.min(self.height as isize - 1) as usize;
-
+    fn finish_inner<A: Arch>(&mut self, color: Color, data: &mut [u32], stride: usize) {
         let a = A::f32::from(color.a() as f32);
         let a_unit = a * A::f32::from(1.0 / 255.0);
         let r = a_unit * A::f32::from(color.r() as f32);
         let g = a_unit * A::f32::from(color.g() as f32);
         let b = a_unit * A::f32::from(color.b() as f32);
 
-        for y in min_y..=max_y {
+        for y in 0..self.height {
             let mut accum = 0.0;
             let mut coverage = 0.0;
 
-            let mut x = min_x;
+            let mut x = 0;
 
-            let bitmask_start = min_x >> (BITMASK_SIZE_BITS + CELL_SIZE_BITS);
-            let bitmask_end = max_x >> (BITMASK_SIZE_BITS + CELL_SIZE_BITS);
-            for bitmask_x in bitmask_start..=bitmask_end {
+            for bitmask_x in 0..self.bitmasks_width {
                 let bitmask_cell_x = bitmask_x << BITMASK_SIZE_BITS;
                 let mut tile = self.bitmasks[y * self.bitmasks_width + bitmask_x];
                 self.bitmasks[y * self.bitmasks_width + bitmask_x] = 0;
 
-                while x <= max_x {
+                while x < self.width {
                     let index = tile.leading_zeros() as usize;
                     let next_x = ((bitmask_cell_x + index) << CELL_SIZE_BITS)
-                        .min(((max_x + 1) >> CELL_SIZE_BITS) << CELL_SIZE_BITS);
+                        .min((self.width >> CELL_SIZE_BITS) << CELL_SIZE_BITS);
 
                     if next_x > x {
                         if coverage > 254.5 / 255.0 && color.a() == 255 {
-                            let start = y * width + x;
-                            let end = y * width + next_x;
+                            let start = y * stride + x;
+                            let end = y * stride + next_x;
                             data[start..end].fill(color.into());
                         } else if coverage > 0.5 / 255.0 {
-                            let start = y * width + x;
-                            let end = y * width + next_x;
+                            let start = y * stride + x;
+                            let end = y * stride + next_x;
                             for pixels_slice in data[start..end].chunks_exact_mut(A::f32::LANES) {
                                 let mask = A::f32::from(coverage);
                                 let pixels = A::u32::load(pixels_slice);
@@ -291,7 +286,7 @@ impl Rasterizer {
 
                     x = next_x;
 
-                    let coverage_start = y * self.width + x;
+                    let coverage_start = y * self.width_padded + x;
                     let coverage_end = coverage_start + CELL_SIZE;
                     let coverage_slice = &mut self.coverage[coverage_start..coverage_end];
 
@@ -303,7 +298,7 @@ impl Rasterizer {
 
                     coverage_slice.fill(0.0);
 
-                    let pixels_start = y * width + x;
+                    let pixels_start = y * stride + x;
                     let pixels_end = pixels_start + CELL_SIZE;
                     let pixels_slice = &mut data[pixels_start..pixels_end];
                     let pixels = A::u32::load(pixels_slice);
@@ -327,10 +322,5 @@ impl Rasterizer {
                 }
             }
         }
-
-        self.min_x = self.width as isize;
-        self.min_y = self.height as isize;
-        self.max_x = 0;
-        self.max_y = 0;
     }
 }
