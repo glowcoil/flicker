@@ -147,6 +147,13 @@ impl Rasterizer {
         self.add_delta(x, y, height, area);
     }
 
+    #[inline]
+    fn mark_cell(&mut self, x: usize, y: usize) {
+        let bitmask_index = y * self.bitmasks_width + (x >> (CELL_SIZE_BITS + BITMASK_SIZE_BITS));
+        let bit_index = BITMASK_SIZE - 1 - ((x >> CELL_SIZE_BITS) & (BITMASK_SIZE - 1));
+        self.bitmasks[bitmask_index] |= 1 << bit_index;
+    }
+
     #[inline(always)]
     fn add_delta(&mut self, x: isize, y: isize, height: f32, area: f32) {
         if y < 0 || y >= self.height as isize || x >= self.width as isize - 1 {
@@ -157,8 +164,7 @@ impl Rasterizer {
             let coverage_index = y as usize * self.width;
             self.coverage[coverage_index] += height;
 
-            let bitmask_row = y as usize * self.bitmasks_width;
-            self.bitmasks[bitmask_row] |= 1 << (BITMASK_SIZE - 1);
+            self.mark_cell(0, y as usize);
 
             return;
         }
@@ -167,15 +173,8 @@ impl Rasterizer {
         self.coverage[coverage_index] += area;
         self.coverage[coverage_index + 1] += height - area;
 
-        let bitmask_row = y as usize * self.bitmasks_width;
-
-        let cell_x = x as usize >> CELL_SIZE_BITS;
-        let cell_bit = 1 << (BITMASK_SIZE - 1 - (cell_x & (BITMASK_SIZE - 1)));
-        self.bitmasks[bitmask_row + (cell_x >> BITMASK_SIZE_BITS)] |= cell_bit;
-
-        let cell_x = (x + 1) as usize >> CELL_SIZE_BITS;
-        let cell_bit = 1 << (BITMASK_SIZE - 1 - (cell_x & (BITMASK_SIZE - 1)));
-        self.bitmasks[bitmask_row + (cell_x >> BITMASK_SIZE_BITS)] |= cell_bit;
+        self.mark_cell(x as usize, y as usize);
+        self.mark_cell(x as usize + 1, y as usize);
     }
 
     pub fn finish(&mut self, color: Color, data: &mut [u32], width: usize) {
