@@ -163,7 +163,7 @@ impl Rasterizer {
         self.add_delta(x, y, height, area);
     }
 
-    #[inline]
+    #[inline(always)]
     fn mark_cell(&mut self, x: usize, y: usize) {
         let bitmask_index = y * self.bitmasks_width + (x >> (CELL_SIZE_BITS + BITMASK_SIZE_BITS));
         let bit_index = BITMASK_SIZE - 1 - ((x >> CELL_SIZE_BITS) & (BITMASK_SIZE - 1));
