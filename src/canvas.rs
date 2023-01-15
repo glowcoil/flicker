@@ -74,7 +74,7 @@ impl Canvas {
     }
 
     pub fn fill_path(&mut self, path: &Path, color: Color) {
-        if path.points.is_empty() {
+        if path.is_empty() {
             return;
         }
 

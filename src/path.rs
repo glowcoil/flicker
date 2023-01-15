@@ -4,8 +4,8 @@ const TOLERANCE: f32 = 0.1;
 
 #[derive(Clone)]
 pub struct Path {
-    pub(crate) verbs: Vec<Verb>,
-    pub(crate) points: Vec<Vec2>,
+    verbs: Vec<Verb>,
+    points: Vec<Vec2>,
 }
 
 #[derive(Copy, Clone)]
@@ -33,6 +33,11 @@ impl Path {
             verbs: Vec::new(),
             points: Vec::new(),
         }
+    }
+
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.points.is_empty()
     }
 
     #[inline]
