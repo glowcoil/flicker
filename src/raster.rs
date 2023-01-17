@@ -1,14 +1,105 @@
-use std::mem;
+use std::{mem, slice};
 use std::sync::atomic::{AtomicPtr, Ordering};
 
 use crate::simd::*;
 use crate::{geom::Vec2, Color};
 
-const CELL_SIZE: usize = 4;
-const CELL_SIZE_BITS: usize = 2;
+const CELL_SIZE: usize = 8;
+const CELL_SIZE_BITS: usize = 3;
 
 const BITMASK_SIZE: usize = u64::BITS as usize;
 const BITMASK_SIZE_BITS: usize = 6;
+
+struct BitSet {
+    words: Vec<u64>,
+    width: usize,
+    height: usize,
+}
+
+impl BitSet {
+    const INDEX_SHIFT: usize = 6;
+    const INDEX_MASK: usize = Self::WORD_WIDTH - 1;
+    const WORD_WIDTH: usize = 1 << Self::INDEX_SHIFT;
+
+    #[inline]
+    fn round_to_width(value: usize) -> usize {
+        (value + Self::WORD_WIDTH - 1) >> Self::INDEX_SHIFT
+    }
+
+    #[inline]
+    fn with_capacity(capacity: usize) -> BitSet {
+        BitSet {
+            words: vec![0; Self::round_to_width(capacity)],
+            width: 0,
+            height: 0,
+        }
+    }
+
+    #[inline]
+    fn set_size(&mut self, width: usize, height: usize) {
+        let new_size = Self::round_to_width(width * height);
+        if new_size > self.words.len() {
+            self.words.resize(new_size, 0);
+        }
+
+        self.width = width;
+        self.height = height;
+    }
+
+    #[inline]
+    fn set_bit(&mut self, x: usize, y: usize) {
+        assert!(x < self.width && y < self.height);
+
+        let index = y * self.width + x;
+        self.words[index >> Self::INDEX_SHIFT] &= 1 << (index & Self::INDEX_MASK);
+    }
+
+    #[inline]
+    fn drain_spans(&mut self) -> DrainSpans {
+        DrainSpans {
+            words: self.words.iter_mut(),
+            current: 0,
+            offset: Self::WORD_WIDTH,
+            x: 0,
+            y: 0,
+        }
+    }
+}
+
+struct Span {
+    y: usize,
+    x_start: usize,
+    x_end: usize,
+}
+
+struct DrainSpans<'a> {
+    current: u64,
+    offset: usize,
+    words: slice::IterMut<'a, u64>,
+    x: usize,
+    y: usize,
+}
+
+impl<'a> Iterator for DrainSpans<'a> {
+    type Item = Span;
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.offset < BitSet::WORD_WIDTH {
+            let start = self.current.trailing_zeros();
+            let shifted = self.current >> start;
+            shifted.trailing_ones();
+        }
+
+        while let Some(word) = self.words.next() {
+
+
+            self.x += BitSet::WORD_WIDTH;
+        }
+
+        None
+    }
+}
 
 pub struct Rasterizer {
     width: usize,
@@ -22,7 +113,8 @@ pub struct Rasterizer {
 
 /// Pad width to next multiple of cell size.
 fn pad_width(width: usize) -> usize {
-    (width + CELL_SIZE - 1) & !(CELL_SIZE - 1)
+    width
+    // (width + CELL_SIZE - 1) & !(CELL_SIZE - 1)
 }
 
 /// Round up to integer number of bitmasks.
@@ -222,8 +314,8 @@ impl Rasterizer {
             //     Sse2::specialize::<Raster>()
             // };
 
-            // let inner = Avx2::try_specialize::<Raster>().unwrap();
-            let inner = Sse2::specialize::<Raster>();
+            let inner = Avx2::try_specialize::<Raster>().unwrap();
+            // let inner = Sse2::specialize::<Raster>();
 
             unsafe {
                 INNER.store(mem::transmute(inner), Ordering::Relaxed);
@@ -254,6 +346,23 @@ impl Rasterizer {
             let mut coverage = 0.0;
 
             let mut x = 0;
+            let mut bitmask_index = y * self.bitmasks_width;
+
+            let bitmask_row_start = y * self.bitmasks_width;
+            let bitmask_row_end = bitmask_row_start + self.bitmasks_width;
+
+            // let mut next_x = x;
+            // while bitmask_index < (y + 1) * self.bitmasks_width {
+            //     let bitmask = self.bitmasks[bitmask_index];
+            //     if bitmask != 0 {
+            //         next_x = () + (bitmask.leading_zeros() << CELL_SIZE_BITS);
+            //         break;
+            //     }
+
+            //     bitmask_index += 1;
+            // }
+
+            // let mut next_x = x;
 
             for bitmask_x in 0..self.bitmasks_width {
                 let bitmask_cell_x = bitmask_x << BITMASK_SIZE_BITS;
@@ -262,8 +371,7 @@ impl Rasterizer {
 
                 while x < self.width {
                     let index = tile.leading_zeros() as usize;
-                    let next_x = ((bitmask_cell_x + index) << CELL_SIZE_BITS)
-                        .min((self.width >> CELL_SIZE_BITS) << CELL_SIZE_BITS);
+                    let next_x = ((bitmask_cell_x + index) << CELL_SIZE_BITS).min(self.width);
 
                     if next_x > x {
                         if coverage > 254.5 / 255.0 && color.a() == 255 {
@@ -273,9 +381,9 @@ impl Rasterizer {
                         } else if coverage > 0.5 / 255.0 {
                             let start = y * stride + x;
                             let end = y * stride + next_x;
-                            for pixels_slice in data[start..end].chunks_exact_mut(A::f32::LANES) {
+                            for pixels_slice in data[start..end].chunks_mut(A::f32::LANES) {
                                 let mask = A::f32::from(coverage);
-                                let pixels = A::u32::load(pixels_slice);
+                                let pixels = A::u32::load_partial(pixels_slice);
 
                                 let dst_a = A::f32::from((pixels >> 24) & A::u32::from(0xFF));
                                 let dst_r = A::f32::from((pixels >> 16) & A::u32::from(0xFF));
@@ -290,7 +398,7 @@ impl Rasterizer {
 
                                 let out =
                                     (out_a << 24) | (out_r << 16) | (out_g << 8) | (out_b << 0);
-                                out.store(pixels_slice);
+                                out.store_partial(pixels_slice);
                             }
                         }
                     }
@@ -301,11 +409,13 @@ impl Rasterizer {
 
                     x = next_x;
 
+                    let next_x = (x + CELL_SIZE).min(self.width);
+
                     let coverage_start = y * self.width_padded + x;
-                    let coverage_end = coverage_start + CELL_SIZE;
+                    let coverage_end = y * self.width_padded + next_x;
                     let coverage_slice = &mut self.coverage[coverage_start..coverage_end];
 
-                    let deltas = A::f32::load(coverage_slice);
+                    let deltas = A::f32::load_partial(coverage_slice);
                     let accums = A::f32::from(accum) + deltas.scan_sum();
                     accum = accums.last();
                     let mask = accums.abs().min(A::f32::from(1.0));
@@ -314,9 +424,9 @@ impl Rasterizer {
                     coverage_slice.fill(0.0);
 
                     let pixels_start = y * stride + x;
-                    let pixels_end = pixels_start + CELL_SIZE;
+                    let pixels_end = y * stride + next_x;
                     let pixels_slice = &mut data[pixels_start..pixels_end];
-                    let pixels = A::u32::load(pixels_slice);
+                    let pixels = A::u32::load_partial(pixels_slice);
 
                     let dst_a = A::f32::from((pixels >> 24) & A::u32::from(0xFF));
                     let dst_r = A::f32::from((pixels >> 16) & A::u32::from(0xFF));
@@ -330,10 +440,10 @@ impl Rasterizer {
                     let out_b = A::u32::from(mask * b + inv_a * dst_b);
 
                     let out = (out_a << 24) | (out_r << 16) | (out_g << 8) | (out_b << 0);
-                    out.store(pixels_slice);
+                    out.store_partial(pixels_slice);
 
                     tile &= !(1 << (BITMASK_SIZE - 1 - index));
-                    x += CELL_SIZE;
+                    x = next_x;
                 }
             }
         }
