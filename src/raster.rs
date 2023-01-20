@@ -172,7 +172,7 @@ impl Rasterizer {
 
     #[inline(always)]
     fn add_delta(&mut self, x: isize, y: isize, height: f32, area: f32) {
-        if y < 0 || y >= self.height as isize || x >= self.width as isize - 1 {
+        if y < 0 || y >= self.height as isize || x >= self.width as isize {
             return;
         }
 
@@ -181,6 +181,15 @@ impl Rasterizer {
             self.coverage[coverage_index] += height;
 
             self.mark_cell(0, y as usize);
+
+            return;
+        }
+
+        if x == self.width as isize - 1 {
+            let coverage_index = y as usize * self.width_padded + x as usize;
+            self.coverage[coverage_index] += area;
+
+            self.mark_cell(x as usize, y as usize);
 
             return;
         }
