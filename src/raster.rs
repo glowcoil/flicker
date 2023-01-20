@@ -4,11 +4,13 @@ use std::sync::atomic::{AtomicPtr, Ordering};
 use crate::simd::*;
 use crate::{geom::Vec2, Color};
 
-const CELL_SIZE: usize = 4;
-const CELL_SIZE_BITS: usize = 2;
+const BITS_PER_BITMASK: usize = u64::BITS as usize;
 
-const BITMASK_SIZE: usize = u64::BITS as usize;
-const BITMASK_SIZE_BITS: usize = 6;
+const PIXELS_PER_BIT: usize = 4;
+const PIXELS_PER_BIT_SHIFT: usize = PIXELS_PER_BIT.trailing_zeros() as usize;
+
+const PIXELS_PER_BITMASK: usize = PIXELS_PER_BIT * BITS_PER_BITMASK;
+const PIXELS_PER_BITMASK_SHIFT: usize = PIXELS_PER_BITMASK.trailing_zeros() as usize;
 
 pub struct Rasterizer {
     width: usize,
@@ -20,7 +22,7 @@ pub struct Rasterizer {
 
 /// Round up to integer number of bitmasks.
 fn bitmask_count_for_width(width: usize) -> usize {
-    (width + (CELL_SIZE * BITMASK_SIZE) - 1) >> (CELL_SIZE_BITS + BITMASK_SIZE_BITS)
+    (width + PIXELS_PER_BITMASK - 1) >> PIXELS_PER_BITMASK_SHIFT
 }
 
 impl Rasterizer {
@@ -154,8 +156,8 @@ impl Rasterizer {
 
     #[inline(always)]
     fn mark_cell(&mut self, x: usize, y: usize) {
-        let bitmask_index = y * self.bitmasks_width + (x >> (CELL_SIZE_BITS + BITMASK_SIZE_BITS));
-        let bit_index = BITMASK_SIZE - 1 - ((x >> CELL_SIZE_BITS) & (BITMASK_SIZE - 1));
+        let bitmask_index = y * self.bitmasks_width + (x >> PIXELS_PER_BITMASK_SHIFT);
+        let bit_index = (x >> PIXELS_PER_BIT_SHIFT) & (BITS_PER_BITMASK - 1);
         self.bitmasks[bitmask_index] |= 1 << bit_index;
     }
 
@@ -251,88 +253,131 @@ impl Rasterizer {
             let mut accum = 0.0;
             let mut coverage = 0.0;
 
+            let coverage_start = y * self.width;
+            let coverage_end = coverage_start + self.width;
+            let coverage_row = &mut self.coverage[coverage_start..coverage_end];
+
+            let pixels_start = y * stride;
+            let pixels_end = pixels_start + self.width;
+            let pixels_row = &mut data[pixels_start..pixels_end];
+
+            let bitmasks_start = y * self.bitmasks_width;
+            let bitmasks_end = bitmasks_start + self.bitmasks_width;
+            let bitmasks_row = &mut self.bitmasks[bitmasks_start..bitmasks_end];
+
             let mut x = 0;
-
-            for bitmask_x in 0..self.bitmasks_width {
-                let bitmask_cell_x = bitmask_x << BITMASK_SIZE_BITS;
-                let mut tile = self.bitmasks[y * self.bitmasks_width + bitmask_x];
-                self.bitmasks[y * self.bitmasks_width + bitmask_x] = 0;
-
-                while x < self.width {
-                    let index = tile.leading_zeros() as usize;
-                    let next_x = ((bitmask_cell_x + index) << CELL_SIZE_BITS).min(self.width);
-
-                    if next_x > x {
-                        if coverage > 254.5 / 255.0 && color.a() == 255 {
-                            let start = y * stride + x;
-                            let end = y * stride + next_x;
-                            data[start..end].fill(color.into());
-                        } else if coverage > 0.5 / 255.0 {
-                            let start = y * stride + x;
-                            let end = y * stride + next_x;
-                            for pixels_slice in data[start..end].chunks_mut(A::f32::LANES) {
-                                let mask = A::f32::from(coverage);
-                                let pixels = A::u32::load_partial(pixels_slice);
-
-                                let dst_a = A::f32::from((pixels >> 24) & A::u32::from(0xFF));
-                                let dst_r = A::f32::from((pixels >> 16) & A::u32::from(0xFF));
-                                let dst_g = A::f32::from((pixels >> 8) & A::u32::from(0xFF));
-                                let dst_b = A::f32::from((pixels >> 0) & A::u32::from(0xFF));
-
-                                let inv_a = A::f32::from(1.0) - mask * a_unit;
-                                let out_a = A::u32::from(mask * a + inv_a * dst_a);
-                                let out_r = A::u32::from(mask * r + inv_a * dst_r);
-                                let out_g = A::u32::from(mask * g + inv_a * dst_g);
-                                let out_b = A::u32::from(mask * b + inv_a * dst_b);
-
-                                let out =
-                                    (out_a << 24) | (out_r << 16) | (out_g << 8) | (out_b << 0);
-                                out.store_partial(pixels_slice);
-                            }
-                        }
-                    }
-
-                    if index == BITMASK_SIZE {
+            let mut bitmask_index = 0;
+            let mut bitmask = mem::replace(&mut bitmasks_row[0], 0);
+            loop {
+                // Find next 1 bit (or the end of the scanline).
+                let next_x;
+                loop {
+                    if bitmask != 0 {
+                        let offset = bitmask.trailing_zeros() as usize;
+                        bitmask |= !(!0 << offset);
+                        let bitmask_base = bitmask_index << PIXELS_PER_BITMASK_SHIFT;
+                        next_x = (bitmask_base + (offset << PIXELS_PER_BIT_SHIFT)).min(self.width);
                         break;
                     }
 
-                    x = next_x;
+                    bitmask_index += 1;
+                    if bitmask_index == self.bitmasks_width {
+                        next_x = self.width;
+                        break;
+                    }
 
-                    let next_x = (x + CELL_SIZE).min(self.width);
+                    bitmask = mem::replace(&mut bitmasks_row[bitmask_index], 0);
+                }
 
-                    let coverage_start = y * self.width + x;
-                    let coverage_end = y * self.width + next_x;
-                    let coverage_slice = &mut self.coverage[coverage_start..coverage_end];
+                // Composite an interior span (or skip an empty span).
+                if next_x > x {
+                    if coverage > 254.5 / 255.0 && color.a() == 255 {
+                        pixels_row[x..next_x].fill(color.into());
+                    } else if coverage > 0.5 / 255.0 {
+                        for pixels_slice in pixels_row[x..next_x].chunks_mut(A::u32::LANES) {
+                            let mask = A::f32::from(coverage);
+                            let pixels = A::u32::load_partial(pixels_slice);
 
-                    let deltas = A::f32::load_partial(coverage_slice);
-                    let accums = A::f32::from(accum) + deltas.scan_sum();
-                    accum = accums.last();
-                    let mask = accums.abs().min(A::f32::from(1.0));
-                    coverage = mask.last();
+                            let dst_a = A::f32::from((pixels >> 24) & A::u32::from(0xFF));
+                            let dst_r = A::f32::from((pixels >> 16) & A::u32::from(0xFF));
+                            let dst_g = A::f32::from((pixels >> 8) & A::u32::from(0xFF));
+                            let dst_b = A::f32::from((pixels >> 0) & A::u32::from(0xFF));
 
-                    coverage_slice.fill(0.0);
+                            let inv_a = A::f32::from(1.0) - mask * a_unit;
+                            let out_a = A::u32::from(mask * a + inv_a * dst_a);
+                            let out_r = A::u32::from(mask * r + inv_a * dst_r);
+                            let out_g = A::u32::from(mask * g + inv_a * dst_g);
+                            let out_b = A::u32::from(mask * b + inv_a * dst_b);
 
-                    let pixels_start = y * stride + x;
-                    let pixels_end = y * stride + next_x;
-                    let pixels_slice = &mut data[pixels_start..pixels_end];
-                    let pixels = A::u32::load_partial(pixels_slice);
+                            let out = (out_a << 24) | (out_r << 16) | (out_g << 8) | (out_b << 0);
+                            out.store_partial(pixels_slice);
+                        }
+                    }
+                }
 
-                    let dst_a = A::f32::from((pixels >> 24) & A::u32::from(0xFF));
-                    let dst_r = A::f32::from((pixels >> 16) & A::u32::from(0xFF));
-                    let dst_g = A::f32::from((pixels >> 8) & A::u32::from(0xFF));
-                    let dst_b = A::f32::from((pixels >> 0) & A::u32::from(0xFF));
+                x = next_x;
+                if next_x == self.width {
+                    break;
+                }
 
-                    let inv_a = A::f32::from(1.0) - mask * a_unit;
-                    let out_a = A::u32::from(mask * a + inv_a * dst_a);
-                    let out_r = A::u32::from(mask * r + inv_a * dst_r);
-                    let out_g = A::u32::from(mask * g + inv_a * dst_g);
-                    let out_b = A::u32::from(mask * b + inv_a * dst_b);
+                // Find next 0 bit (or the end of the scanline).
+                let next_x;
+                loop {
+                    if bitmask != !0 {
+                        let offset = bitmask.trailing_ones() as usize;
+                        bitmask &= !0 << offset;
+                        let bitmask_base = bitmask_index << PIXELS_PER_BITMASK_SHIFT;
+                        next_x = (bitmask_base + (offset << PIXELS_PER_BIT_SHIFT)).min(self.width);
+                        break;
+                    }
 
-                    let out = (out_a << 24) | (out_r << 16) | (out_g << 8) | (out_b << 0);
-                    out.store_partial(pixels_slice);
+                    bitmask_index += 1;
+                    if bitmask_index == self.bitmasks_width {
+                        next_x = self.width;
+                        break;
+                    }
 
-                    tile &= !(1 << (BITMASK_SIZE - 1 - index));
-                    x = next_x;
+                    bitmask = mem::replace(&mut bitmasks_row[bitmask_index], 0);
+                }
+
+                // Composite an edge span.
+                if next_x > x {
+                    let coverage_slice = &mut coverage_row[x..next_x];
+                    let coverage_chunks = coverage_slice.chunks_mut(A::f32::LANES);
+
+                    let pixels_slice = &mut pixels_row[x..next_x];
+                    let pixels_chunks = pixels_slice.chunks_mut(A::u32::LANES);
+
+                    for (coverage_chunk, pixels_chunk) in coverage_chunks.zip(pixels_chunks) {
+                        let deltas = A::f32::load_partial(coverage_chunk);
+                        let accums = A::f32::from(accum) + deltas.scan_sum();
+                        accum = accums.last();
+                        let mask = accums.abs().min(A::f32::from(1.0));
+                        coverage = mask.last();
+
+                        coverage_chunk.fill(0.0);
+
+                        let pixels = A::u32::load_partial(pixels_chunk);
+
+                        let dst_a = A::f32::from((pixels >> 24) & A::u32::from(0xFF));
+                        let dst_r = A::f32::from((pixels >> 16) & A::u32::from(0xFF));
+                        let dst_g = A::f32::from((pixels >> 8) & A::u32::from(0xFF));
+                        let dst_b = A::f32::from((pixels >> 0) & A::u32::from(0xFF));
+
+                        let inv_a = A::f32::from(1.0) - mask * a_unit;
+                        let out_a = A::u32::from(mask * a + inv_a * dst_a);
+                        let out_r = A::u32::from(mask * r + inv_a * dst_r);
+                        let out_g = A::u32::from(mask * g + inv_a * dst_g);
+                        let out_b = A::u32::from(mask * b + inv_a * dst_b);
+
+                        let out = (out_a << 24) | (out_r << 16) | (out_g << 8) | (out_b << 0);
+                        out.store_partial(pixels_chunk);
+                    }
+                }
+
+                x = next_x;
+                if next_x == self.width {
+                    break;
                 }
             }
         }
