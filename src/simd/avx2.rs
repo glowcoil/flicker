@@ -15,20 +15,9 @@ pub struct Avx2;
 
 impl PossibleArch for Avx2 {
     #[inline]
-    fn try_specialize<T: Task>() -> Option<fn(T) -> T::Result> {
-        #[inline]
-        #[target_feature(enable = "avx2")]
-        unsafe fn inner<T: Task>(task: T) -> T::Result {
-            task.run::<Avx2Impl>()
-        }
-
-        #[inline]
-        fn run<T: Task>(task: T) -> T::Result {
-            unsafe { inner::<T>(task) }
-        }
-
+    fn try_invoke<T: Task>(task: T) -> Option<T::Result> {
         if is_x86_feature_detected!("avx2") {
-            Some(run::<T>)
+            Some(Avx2Impl::invoke(task))
         } else {
             None
         }
@@ -41,8 +30,8 @@ use super::SupportedArch;
 #[cfg(target_feature = "avx2")]
 impl SupportedArch for Avx2 {
     #[inline]
-    fn specialize<T: Task>() -> fn(T) -> T::Result {
-        T::run::<Avx2Impl>
+    fn invoke<T: Task>(task: T) -> T::Result {
+        Avx2Impl::invoke(task)
     }
 }
 
@@ -51,6 +40,16 @@ struct Avx2Impl;
 impl Arch for Avx2Impl {
     type f32 = f32x8;
     type u32 = u32x8;
+
+    fn invoke<T: Task>(task: T) -> T::Result {
+        #[inline]
+        #[target_feature(enable = "avx2")]
+        unsafe fn inner<T: Task>(task: T) -> T::Result {
+            task.run::<Avx2Impl>()
+        }
+
+        unsafe { inner(task) }
+    }
 }
 
 #[derive(Copy, Clone)]

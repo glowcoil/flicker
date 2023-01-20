@@ -9,26 +9,15 @@ use std::arch::x86::*;
 #[cfg(target_arch = "x86_64")]
 use std::arch::x86_64::*;
 
-use super::{Arch, Float, Int, PossibleArch, Simd, SupportedArch, Task};
+use super::{Arch, Float, Int, PossibleArch, Simd, Task};
 
 pub struct Sse2;
 
 impl PossibleArch for Sse2 {
     #[inline]
-    fn try_specialize<T: Task>() -> Option<fn(T) -> T::Result> {
-        #[inline]
-        #[target_feature(enable = "sse2")]
-        unsafe fn inner<T: Task>(task: T) -> T::Result {
-            task.run::<Sse2Impl>()
-        }
-
-        #[inline]
-        fn run<T: Task>(task: T) -> T::Result {
-            unsafe { inner::<T>(task) }
-        }
-
+    fn try_invoke<T: Task>(task: T) -> Option<T::Result> {
         if is_x86_feature_detected!("sse2") {
-            Some(run::<T>)
+            Some(Sse2Impl::invoke(task))
         } else {
             None
         }
@@ -36,10 +25,13 @@ impl PossibleArch for Sse2 {
 }
 
 #[cfg(target_feature = "sse2")]
+use super::SupportedArch;
+
+#[cfg(target_feature = "sse2")]
 impl SupportedArch for Sse2 {
     #[inline]
-    fn specialize<T: Task>() -> fn(T) -> T::Result {
-        T::run::<Sse2Impl>
+    fn invoke<T: Task>(task: T) -> T::Result {
+        Sse2Impl::invoke(task)
     }
 }
 
@@ -48,6 +40,16 @@ struct Sse2Impl;
 impl Arch for Sse2Impl {
     type f32 = f32x4;
     type u32 = u32x4;
+
+    fn invoke<T: Task>(task: T) -> T::Result {
+        #[inline]
+        #[target_feature(enable = "sse2")]
+        unsafe fn inner<T: Task>(task: T) -> T::Result {
+            task.run::<Sse2Impl>()
+        }
+
+        unsafe { inner(task) }
+    }
 }
 
 #[derive(Copy, Clone)]

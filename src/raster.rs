@@ -1,5 +1,4 @@
 use std::mem;
-use std::sync::atomic::{AtomicPtr, Ordering};
 
 use crate::simd::*;
 use crate::{geom::Vec2, Color};
@@ -211,34 +210,13 @@ impl Rasterizer {
             }
         }
 
-        static INNER: AtomicPtr<()> =
-            unsafe { AtomicPtr::new(mem::transmute(dispatch as fn(Raster))) };
-
-        fn dispatch(task: Raster) {
-            // Currently CELL_SIZE is hard-coded to 4
-            // let inner = if let Some(avx2) = Avx2::try_specialize::<Raster>() {
-            //     avx2
-            // } else {
-            //     Sse2::specialize::<Raster>()
-            // };
-
-            // let inner = Avx2::try_specialize::<Raster>().unwrap();
-            let inner = Sse2::specialize::<Raster>();
-
-            unsafe {
-                INNER.store(mem::transmute(inner), Ordering::Relaxed);
-            }
-
-            inner(task)
-        }
-
-        let inner: fn(Raster) = unsafe { mem::transmute(INNER.load(Ordering::Relaxed)) };
-        inner(Raster {
+        Avx2::try_invoke(Raster {
             rasterizer: self,
             color,
             data,
             stride,
         })
+        .unwrap()
     }
 
     #[inline(always)]

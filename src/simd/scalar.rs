@@ -11,15 +11,15 @@ pub struct Scalar;
 
 impl PossibleArch for Scalar {
     #[inline]
-    fn try_specialize<T: Task>() -> Option<fn(T) -> T::Result> {
-        Some(Self::specialize::<T>())
+    fn try_invoke<T: Task>(task: T) -> Option<T::Result> {
+        Some(ScalarImpl::invoke(task))
     }
 }
 
 impl SupportedArch for Scalar {
     #[inline]
-    fn specialize<T: Task>() -> fn(T) -> T::Result {
-        T::run::<ScalarImpl>
+    fn invoke<T: Task>(task: T) -> T::Result {
+        ScalarImpl::invoke(task)
     }
 }
 
@@ -28,6 +28,10 @@ struct ScalarImpl;
 impl Arch for ScalarImpl {
     type f32 = f32x1;
     type u32 = u32x1;
+
+    fn invoke<T: Task>(task: T) -> T::Result {
+        task.run::<ScalarImpl>()
+    }
 }
 
 #[derive(Copy, Clone, Default)]

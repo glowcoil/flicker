@@ -19,6 +19,8 @@ pub use sse2::*;
 pub trait Arch {
     type f32: Simd<Elem = f32> + Float + From<Self::u32>;
     type u32: Simd<Elem = u32> + Int + From<Self::f32>;
+
+    fn invoke<T: Task>(task: T) -> T::Result;
 }
 
 pub trait Simd: Copy + Clone + Debug + Default + Send + Sync + Sized
@@ -61,11 +63,11 @@ where
 }
 
 pub trait PossibleArch {
-    fn try_specialize<T: Task>() -> Option<fn(T) -> T::Result>;
+    fn try_invoke<T: Task>(task: T) -> Option<T::Result>;
 }
 
 pub trait SupportedArch {
-    fn specialize<T: Task>() -> fn(T) -> T::Result;
+    fn invoke<T: Task>(task: T) -> T::Result;
 }
 
 pub trait Task {
@@ -243,24 +245,19 @@ mod tests {
 
     #[test]
     fn scalar_f32() {
-        let test = Scalar::specialize::<TestF32>();
-        test(TestF32);
+        Scalar::invoke::<TestF32>();
     }
 
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     #[test]
     fn sse2_f32() {
-        if let Some(test) = Sse2::try_specialize::<TestF32>() {
-            test(TestF32);
-        }
+        Sse2::try_invoke::<TestF32>();
     }
 
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     #[test]
     fn avx2_f32() {
-        if let Some(test) = Avx2::try_specialize::<TestF32>() {
-            test(TestF32);
-        }
+        Avx2::try_invoke::<TestF32>();
     }
 
     struct TestU32;
@@ -343,23 +340,18 @@ mod tests {
 
     #[test]
     fn scalar_u32() {
-        let test = Scalar::specialize::<TestU32>();
-        test(TestU32);
+        Scalar::invoke::<TestU32>();
     }
 
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     #[test]
     fn sse2_u32() {
-        if let Some(test) = Sse2::try_specialize::<TestU32>() {
-            test(TestU32);
-        }
+        Sse2::try_invoke::<TestU32>();
     }
 
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     #[test]
     fn avx2_u32() {
-        if let Some(test) = Avx2::try_specialize::<TestU32>() {
-            test(TestU32);
-        }
+        Avx2::try_invoke::<TestU32>();
     }
 }
