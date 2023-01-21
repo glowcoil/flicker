@@ -245,19 +245,19 @@ mod tests {
 
     #[test]
     fn scalar_f32() {
-        Scalar::invoke::<TestF32>();
+        Scalar::invoke::<TestF32>(TestF32);
     }
 
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     #[test]
     fn sse2_f32() {
-        Sse2::try_invoke::<TestF32>();
+        Sse2::try_invoke::<TestF32>(TestF32);
     }
 
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     #[test]
     fn avx2_f32() {
-        Avx2::try_invoke::<TestF32>();
+        Avx2::try_invoke::<TestF32>(TestF32);
     }
 
     struct TestU32;
@@ -340,18 +340,18 @@ mod tests {
 
     #[test]
     fn scalar_u32() {
-        Scalar::invoke::<TestU32>();
+        Scalar::invoke::<TestU32>(TestU32);
     }
 
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     #[test]
     fn sse2_u32() {
-        Sse2::try_invoke::<TestU32>();
+        Sse2::try_invoke::<TestU32>(TestU32);
     }
 
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     #[test]
     fn avx2_u32() {
-        Avx2::try_invoke::<TestU32>();
+        Avx2::try_invoke::<TestU32>(TestU32);
     }
 }
