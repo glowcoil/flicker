@@ -3,15 +3,20 @@ use std::mem;
 use crate::simd::*;
 use crate::{geom::Vec2, Color};
 
-const BITS_PER_BITMASK: usize = u64::BITS as usize;
+struct Consts<A: Arch>(std::marker::PhantomData<A>);
 
-const PIXELS_PER_BIT: usize = 4;
-const PIXELS_PER_BIT_SHIFT: usize = PIXELS_PER_BIT.trailing_zeros() as usize;
+impl<A: Arch> Consts<A> {
+    const BITS_PER_BITMASK: usize = u64::BITS as usize;
 
-const PIXELS_PER_BITMASK: usize = PIXELS_PER_BIT * BITS_PER_BITMASK;
-const PIXELS_PER_BITMASK_SHIFT: usize = PIXELS_PER_BITMASK.trailing_zeros() as usize;
+    const PIXELS_PER_BIT: usize = A::u32::LANES;
+    const PIXELS_PER_BIT_SHIFT: usize = Self::PIXELS_PER_BIT.trailing_zeros() as usize;
+
+    const PIXELS_PER_BITMASK: usize = Self::PIXELS_PER_BIT * Self::BITS_PER_BITMASK;
+    const PIXELS_PER_BITMASK_SHIFT: usize = Self::PIXELS_PER_BITMASK.trailing_zeros() as usize;
+}
 
 struct Methods {
+    bitmask_count_for_width: fn(width: usize) -> usize,
     add_line: fn(&mut Rasterizer, p2: Vec2, p2: Vec2),
     finish: fn(&mut Rasterizer, color: Color, data: &mut [u32], stride: usize),
 }
@@ -25,6 +30,7 @@ impl Methods {
 
             fn run<A: Arch>(self) -> Methods {
                 Methods {
+                    bitmask_count_for_width: bitmask_count_for_width::<A>,
                     add_line: Rasterizer::add_line_outer::<A>,
                     finish: Rasterizer::finish_outer::<A>,
                 }
@@ -49,15 +55,15 @@ pub struct Rasterizer {
 }
 
 /// Round up to integer number of bitmasks.
-fn bitmask_count_for_width(width: usize) -> usize {
-    (width + PIXELS_PER_BITMASK - 1) >> PIXELS_PER_BITMASK_SHIFT
+fn bitmask_count_for_width<A: Arch>(width: usize) -> usize {
+    (width + Consts::<A>::PIXELS_PER_BITMASK - 1) >> Consts::<A>::PIXELS_PER_BITMASK_SHIFT
 }
 
 impl Rasterizer {
     pub fn with_size(width: usize, height: usize) -> Rasterizer {
         let methods = Methods::specialize();
 
-        let bitmasks_width = bitmask_count_for_width(width);
+        let bitmasks_width = (methods.bitmask_count_for_width)(width);
 
         Rasterizer {
             methods,
@@ -71,7 +77,7 @@ impl Rasterizer {
 
     pub fn set_size(&mut self, width: usize, height: usize) {
         self.width = width;
-        self.bitmasks_width = bitmask_count_for_width(width);
+        self.bitmasks_width = (self.methods.bitmask_count_for_width)(width);
         self.height = height;
     }
 
@@ -79,7 +85,6 @@ impl Rasterizer {
         (self.methods.add_line)(self, p1, p2)
     }
 
-    #[inline(always)]
     fn add_line_outer<A: Arch>(&mut self, p1: Vec2, p2: Vec2) {
         struct AddLine<'a> {
             rasterizer: &'a mut Rasterizer,
@@ -121,7 +126,7 @@ impl Rasterizer {
         if x == x_end && y == y_end {
             let height = p2.y - p1.y;
             let area = 0.5 * height * ((x as f32 + 1.0 - p1.x) + (x as f32 + 1.0 - p2.x));
-            self.add_delta(x, y, height, area);
+            self.add_delta::<A>(x, y, height, area);
             return;
         }
 
@@ -204,24 +209,25 @@ impl Rasterizer {
             let height = sign * (y2 - y1);
             let area = 0.5 * height * (area_offset + area_sign * (x1 + x2));
 
-            self.add_delta(col, row, height, area);
+            self.add_delta::<A>(col, row, height, area);
         }
 
         let height = sign * (y_offset_end - y_offset);
         let area = 0.5 * height * (area_offset + area_sign * (x_offset + x_offset_end));
 
-        self.add_delta(x, y, height, area);
+        self.add_delta::<A>(x, y, height, area);
     }
 
     #[inline(always)]
-    fn mark_cell(&mut self, x: usize, y: usize) {
-        let bitmask_index = y * self.bitmasks_width + (x >> PIXELS_PER_BITMASK_SHIFT);
-        let bit_index = (x >> PIXELS_PER_BIT_SHIFT) & (BITS_PER_BITMASK - 1);
+    fn mark_cell<A: Arch>(&mut self, x: usize, y: usize) {
+        let bitmask_index = y * self.bitmasks_width + (x >> Consts::<A>::PIXELS_PER_BITMASK_SHIFT);
+        let bit_index =
+            (x >> Consts::<A>::PIXELS_PER_BIT_SHIFT) & (Consts::<A>::BITS_PER_BITMASK - 1);
         self.bitmasks[bitmask_index] |= 1 << bit_index;
     }
 
     #[inline(always)]
-    fn add_delta(&mut self, x: isize, y: isize, height: f32, area: f32) {
+    fn add_delta<A: Arch>(&mut self, x: isize, y: isize, height: f32, area: f32) {
         if y < 0 || y >= self.height as isize || x >= self.width as isize {
             return;
         }
@@ -230,7 +236,7 @@ impl Rasterizer {
             let coverage_index = y as usize * self.width;
             self.coverage[coverage_index] += height;
 
-            self.mark_cell(0, y as usize);
+            self.mark_cell::<A>(0, y as usize);
 
             return;
         }
@@ -239,7 +245,7 @@ impl Rasterizer {
             let coverage_index = y as usize * self.width + x as usize;
             self.coverage[coverage_index] += area;
 
-            self.mark_cell(x as usize, y as usize);
+            self.mark_cell::<A>(x as usize, y as usize);
 
             return;
         }
@@ -248,8 +254,8 @@ impl Rasterizer {
         self.coverage[coverage_index] += area;
         self.coverage[coverage_index + 1] += height - area;
 
-        self.mark_cell(x as usize, y as usize);
-        self.mark_cell(x as usize + 1, y as usize);
+        self.mark_cell::<A>(x as usize, y as usize);
+        self.mark_cell::<A>(x as usize + 1, y as usize);
     }
 
     pub fn finish(&mut self, color: Color, data: &mut [u32], stride: usize) {
@@ -316,8 +322,9 @@ impl Rasterizer {
                     if bitmask != 0 {
                         let offset = bitmask.trailing_zeros() as usize;
                         bitmask |= !(!0 << offset);
-                        let bitmask_base = bitmask_index << PIXELS_PER_BITMASK_SHIFT;
-                        next_x = (bitmask_base + (offset << PIXELS_PER_BIT_SHIFT)).min(self.width);
+                        let bitmask_base = bitmask_index << Consts::<A>::PIXELS_PER_BITMASK_SHIFT;
+                        next_x = (bitmask_base + (offset << Consts::<A>::PIXELS_PER_BIT_SHIFT))
+                            .min(self.width);
                         break;
                     }
 
@@ -367,8 +374,9 @@ impl Rasterizer {
                     if bitmask != !0 {
                         let offset = bitmask.trailing_ones() as usize;
                         bitmask &= !0 << offset;
-                        let bitmask_base = bitmask_index << PIXELS_PER_BITMASK_SHIFT;
-                        next_x = (bitmask_base + (offset << PIXELS_PER_BIT_SHIFT)).min(self.width);
+                        let bitmask_base = bitmask_index << Consts::<A>::PIXELS_PER_BITMASK_SHIFT;
+                        next_x = (bitmask_base + (offset << Consts::<A>::PIXELS_PER_BIT_SHIFT))
+                            .min(self.width);
                         break;
                     }
 
