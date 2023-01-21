@@ -11,7 +11,36 @@ const PIXELS_PER_BIT_SHIFT: usize = PIXELS_PER_BIT.trailing_zeros() as usize;
 const PIXELS_PER_BITMASK: usize = PIXELS_PER_BIT * BITS_PER_BITMASK;
 const PIXELS_PER_BITMASK_SHIFT: usize = PIXELS_PER_BITMASK.trailing_zeros() as usize;
 
+struct Methods {
+    add_line: fn(&mut Rasterizer, p2: Vec2, p2: Vec2),
+    finish: fn(&mut Rasterizer, color: Color, data: &mut [u32], stride: usize),
+}
+
+impl Methods {
+    fn specialize() -> Methods {
+        struct Specialize;
+
+        impl Task for Specialize {
+            type Result = Methods;
+
+            fn run<A: Arch>(self) -> Methods {
+                Methods {
+                    add_line: Rasterizer::add_line_outer::<A>,
+                    finish: Rasterizer::finish_outer::<A>,
+                }
+            }
+        }
+
+        if let Some(methods) = Avx2::try_invoke(Specialize) {
+            methods
+        } else {
+            Sse2::invoke(Specialize)
+        }
+    }
+}
+
 pub struct Rasterizer {
+    methods: Methods,
     width: usize,
     height: usize,
     coverage: Vec<f32>,
@@ -26,9 +55,12 @@ fn bitmask_count_for_width(width: usize) -> usize {
 
 impl Rasterizer {
     pub fn with_size(width: usize, height: usize) -> Rasterizer {
+        let methods = Methods::specialize();
+
         let bitmasks_width = bitmask_count_for_width(width);
 
         Rasterizer {
+            methods,
             width,
             height,
             coverage: vec![0.0; width * height],
@@ -43,8 +75,36 @@ impl Rasterizer {
         self.height = height;
     }
 
-    #[inline]
     pub fn add_line(&mut self, p1: Vec2, p2: Vec2) {
+        (self.methods.add_line)(self, p1, p2)
+    }
+
+    #[inline(always)]
+    fn add_line_outer<A: Arch>(&mut self, p1: Vec2, p2: Vec2) {
+        struct AddLine<'a> {
+            rasterizer: &'a mut Rasterizer,
+            p1: Vec2,
+            p2: Vec2,
+        }
+
+        impl<'a> Task for AddLine<'a> {
+            type Result = ();
+
+            #[inline(always)]
+            fn run<A: Arch>(self) {
+                self.rasterizer.add_line_inner::<A>(self.p1, self.p2);
+            }
+        }
+
+        A::invoke(AddLine {
+            rasterizer: self,
+            p1,
+            p2,
+        })
+    }
+
+    #[inline(always)]
+    fn add_line_inner<A: Arch>(&mut self, p1: Vec2, p2: Vec2) {
         let mut x = (p1.x + 1.0) as isize - 1;
         let mut y = (p1.y + 1.0) as isize - 1;
 
@@ -193,14 +253,18 @@ impl Rasterizer {
     }
 
     pub fn finish(&mut self, color: Color, data: &mut [u32], stride: usize) {
-        struct Raster<'a, 'b> {
+        (self.methods.finish)(self, color, data, stride)
+    }
+
+    fn finish_outer<A: Arch>(&mut self, color: Color, data: &mut [u32], stride: usize) {
+        struct Finish<'a, 'b> {
             rasterizer: &'a mut Rasterizer,
             color: Color,
             data: &'b mut [u32],
             stride: usize,
         }
 
-        impl<'a, 'b> Task for Raster<'a, 'b> {
+        impl<'a, 'b> Task for Finish<'a, 'b> {
             type Result = ();
 
             #[inline(always)]
@@ -210,13 +274,12 @@ impl Rasterizer {
             }
         }
 
-        Avx2::try_invoke(Raster {
+        A::invoke(Finish {
             rasterizer: self,
             color,
             data,
             stride,
         })
-        .unwrap()
     }
 
     #[inline(always)]
