@@ -3,6 +3,12 @@ use std::mem;
 use crate::simd::*;
 use crate::{geom::Vec2, Color};
 
+#[derive(Copy, Clone)]
+pub struct Segment {
+    pub p1: Vec2,
+    pub p2: Vec2,
+}
+
 struct Consts<A: Arch>(std::marker::PhantomData<A>);
 
 impl<A: Arch> Consts<A> {
@@ -17,7 +23,7 @@ impl<A: Arch> Consts<A> {
 
 struct Methods {
     bitmask_count_for_width: fn(width: usize) -> usize,
-    add_line: fn(&mut Rasterizer, p2: Vec2, p2: Vec2),
+    add_segments: fn(&mut Rasterizer, segments: &[Segment]),
     finish: fn(&mut Rasterizer, color: Color, data: &mut [u32], stride: usize),
 }
 
@@ -31,7 +37,7 @@ impl Methods {
             fn run<A: Arch>(self) -> Methods {
                 Methods {
                     bitmask_count_for_width: bitmask_count_for_width::<A>,
-                    add_line: Rasterizer::add_line_inner::<A>,
+                    add_segments: Rasterizer::add_segments_inner::<A>,
                     finish: Rasterizer::finish_inner::<A>,
                 }
             }
@@ -81,120 +87,123 @@ impl Rasterizer {
         self.height = height;
     }
 
-    pub fn add_line(&mut self, p1: Vec2, p2: Vec2) {
-        (self.methods.add_line)(self, p1, p2)
+    pub fn add_segments(&mut self, segments: &[Segment]) {
+        (self.methods.add_segments)(self, segments)
     }
 
-    fn add_line_inner<A: Arch>(&mut self, p1: Vec2, p2: Vec2) {
+    fn add_segments_inner<A: Arch>(&mut self, segments: &[Segment]) {
         A::invoke(
             #[inline(always)]
             || {
-                let mut x = (p1.x + 1.0) as isize - 1;
-                let mut y = (p1.y + 1.0) as isize - 1;
+                for Segment { p1, p2 } in segments {
+                    let mut x = (p1.x + 1.0) as isize - 1;
+                    let mut y = (p1.y + 1.0) as isize - 1;
 
-                let x_end = (p2.x + 1.0) as isize - 1;
-                let y_end = (p2.y + 1.0) as isize - 1;
+                    let x_end = (p2.x + 1.0) as isize - 1;
+                    let y_end = (p2.y + 1.0) as isize - 1;
 
-                if (x >= self.width as isize && x_end >= self.width as isize)
-                    || (y >= self.height as isize && y_end >= self.height as isize)
-                    || (y < 0 && y_end < 0)
-                {
-                    return;
-                }
-
-                if x == x_end && y == y_end {
-                    let height = p2.y - p1.y;
-                    let area = 0.5 * height * ((x as f32 + 1.0 - p1.x) + (x as f32 + 1.0 - p2.x));
-                    self.add_delta::<A>(x, y, height, area);
-                    return;
-                }
-
-                let x_inc;
-                let mut x_offset;
-                let x_offset_end;
-                let dx;
-                let area_offset;
-                let area_sign;
-                if p2.x > p1.x {
-                    x_inc = 1;
-                    x_offset = p1.x - x as f32;
-                    x_offset_end = p2.x - x_end as f32;
-                    dx = p2.x - p1.x;
-                    area_offset = 2.0;
-                    area_sign = -1.0;
-                } else {
-                    x_inc = -1;
-                    x_offset = 1.0 - (p1.x - x as f32);
-                    x_offset_end = 1.0 - (p2.x - x_end as f32);
-                    dx = p1.x - p2.x;
-                    area_offset = 0.0;
-                    area_sign = 1.0;
-                }
-
-                let y_inc;
-                let mut y_offset;
-                let y_offset_end;
-                let dy;
-                let sign;
-                if p2.y > p1.y {
-                    y_inc = 1;
-                    y_offset = p1.y - y as f32;
-                    y_offset_end = p2.y - y_end as f32;
-                    dy = p2.y - p1.y;
-                    sign = 1.0;
-                } else {
-                    y_inc = -1;
-                    y_offset = 1.0 - (p1.y - y as f32);
-                    y_offset_end = 1.0 - (p2.y - y_end as f32);
-                    dy = p1.y - p2.y;
-                    sign = -1.0;
-                }
-
-                let dxdy = dx / dy;
-                let dydx = dy / dx;
-
-                let mut y_offset_for_prev_x = y_offset - dydx * x_offset;
-                let mut x_offset_for_prev_y = x_offset - dxdy * y_offset;
-
-                while x != x_end || y != y_end {
-                    let col = x;
-                    let row = y;
-
-                    let x1 = x_offset;
-                    let y1 = y_offset;
-
-                    let x2;
-                    let y2;
-                    if y != y_end && (x == x_end || x_offset_for_prev_y + dxdy < 1.0) {
-                        y_offset = 0.0;
-                        x_offset = x_offset_for_prev_y + dxdy;
-                        x_offset_for_prev_y = x_offset;
-                        y_offset_for_prev_x -= 1.0;
-                        y += y_inc;
-
-                        x2 = x_offset;
-                        y2 = 1.0;
-                    } else {
-                        x_offset = 0.0;
-                        y_offset = y_offset_for_prev_x + dydx;
-                        x_offset_for_prev_y -= 1.0;
-                        y_offset_for_prev_x = y_offset;
-                        x += x_inc;
-
-                        x2 = 1.0;
-                        y2 = y_offset;
+                    if (x >= self.width as isize && x_end >= self.width as isize)
+                        || (y >= self.height as isize && y_end >= self.height as isize)
+                        || (y < 0 && y_end < 0)
+                    {
+                        continue;
                     }
 
-                    let height = sign * (y2 - y1);
-                    let area = 0.5 * height * (area_offset + area_sign * (x1 + x2));
+                    if x == x_end && y == y_end {
+                        let height = p2.y - p1.y;
+                        let area =
+                            0.5 * height * ((x as f32 + 1.0 - p1.x) + (x as f32 + 1.0 - p2.x));
+                        self.add_delta::<A>(x, y, height, area);
+                        continue;
+                    }
 
-                    self.add_delta::<A>(col, row, height, area);
+                    let x_inc;
+                    let mut x_offset;
+                    let x_offset_end;
+                    let dx;
+                    let area_offset;
+                    let area_sign;
+                    if p2.x > p1.x {
+                        x_inc = 1;
+                        x_offset = p1.x - x as f32;
+                        x_offset_end = p2.x - x_end as f32;
+                        dx = p2.x - p1.x;
+                        area_offset = 2.0;
+                        area_sign = -1.0;
+                    } else {
+                        x_inc = -1;
+                        x_offset = 1.0 - (p1.x - x as f32);
+                        x_offset_end = 1.0 - (p2.x - x_end as f32);
+                        dx = p1.x - p2.x;
+                        area_offset = 0.0;
+                        area_sign = 1.0;
+                    }
+
+                    let y_inc;
+                    let mut y_offset;
+                    let y_offset_end;
+                    let dy;
+                    let sign;
+                    if p2.y > p1.y {
+                        y_inc = 1;
+                        y_offset = p1.y - y as f32;
+                        y_offset_end = p2.y - y_end as f32;
+                        dy = p2.y - p1.y;
+                        sign = 1.0;
+                    } else {
+                        y_inc = -1;
+                        y_offset = 1.0 - (p1.y - y as f32);
+                        y_offset_end = 1.0 - (p2.y - y_end as f32);
+                        dy = p1.y - p2.y;
+                        sign = -1.0;
+                    }
+
+                    let dxdy = dx / dy;
+                    let dydx = dy / dx;
+
+                    let mut y_offset_for_prev_x = y_offset - dydx * x_offset;
+                    let mut x_offset_for_prev_y = x_offset - dxdy * y_offset;
+
+                    while x != x_end || y != y_end {
+                        let col = x;
+                        let row = y;
+
+                        let x1 = x_offset;
+                        let y1 = y_offset;
+
+                        let x2;
+                        let y2;
+                        if y != y_end && (x == x_end || x_offset_for_prev_y + dxdy < 1.0) {
+                            y_offset = 0.0;
+                            x_offset = x_offset_for_prev_y + dxdy;
+                            x_offset_for_prev_y = x_offset;
+                            y_offset_for_prev_x -= 1.0;
+                            y += y_inc;
+
+                            x2 = x_offset;
+                            y2 = 1.0;
+                        } else {
+                            x_offset = 0.0;
+                            y_offset = y_offset_for_prev_x + dydx;
+                            x_offset_for_prev_y -= 1.0;
+                            y_offset_for_prev_x = y_offset;
+                            x += x_inc;
+
+                            x2 = 1.0;
+                            y2 = y_offset;
+                        }
+
+                        let height = sign * (y2 - y1);
+                        let area = 0.5 * height * (area_offset + area_sign * (x1 + x2));
+
+                        self.add_delta::<A>(col, row, height, area);
+                    }
+
+                    let height = sign * (y_offset_end - y_offset);
+                    let area = 0.5 * height * (area_offset + area_sign * (x_offset + x_offset_end));
+
+                    self.add_delta::<A>(x, y, height, area);
                 }
-
-                let height = sign * (y_offset_end - y_offset);
-                let area = 0.5 * height * (area_offset + area_sign * (x_offset + x_offset_end));
-
-                self.add_delta::<A>(x, y, height, area);
             },
         )
     }

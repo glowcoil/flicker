@@ -1,13 +1,16 @@
 use crate::color::Color;
 use crate::geom::Vec2;
 use crate::path::{Command, Path};
-use crate::raster::Rasterizer;
+use crate::raster::{Rasterizer, Segment};
 use crate::text::Font;
+
+const MAX_SEGMENTS: usize = 256;
 
 pub struct Canvas {
     width: usize,
     height: usize,
     data: Vec<u32>,
+    segments: Vec<Segment>,
     rasterizer: Rasterizer,
 }
 
@@ -17,6 +20,7 @@ impl Canvas {
             width,
             height,
             data: vec![0xFF000000; width * height],
+            segments: Vec::with_capacity(MAX_SEGMENTS),
             rasterizer: Rasterizer::with_size(width, height),
         }
     }
@@ -37,6 +41,19 @@ impl Canvas {
         for pixel in self.data.iter_mut() {
             *pixel = color.into();
         }
+    }
+
+    fn add_segment(&mut self, p1: Vec2, p2: Vec2) {
+        self.segments.push(Segment { p1, p2 });
+
+        if self.segments.len() == self.segments.capacity() {
+            self.drain_segments();
+        }
+    }
+
+    fn drain_segments(&mut self) {
+        self.rasterizer.add_segments(&self.segments);
+        self.segments.clear();
     }
 
     pub fn fill_path(&mut self, path: &Path, color: Color) {
@@ -71,11 +88,11 @@ impl Canvas {
                 last = point;
             }
             Command::Line(point) => {
-                self.rasterizer.add_line(last - offset, point - offset);
+                self.add_segment(last - offset, point - offset);
                 last = point;
             }
             Command::Close => {
-                self.rasterizer.add_line(last - offset, first - offset);
+                self.add_segment(last - offset, first - offset);
                 last = first;
             }
             _ => {
@@ -83,8 +100,10 @@ impl Canvas {
             }
         });
         if last != first {
-            self.rasterizer.add_line(last - offset, first - offset);
+            self.add_segment(last - offset, first - offset);
         }
+
+        self.drain_segments();
 
         let data_start = min_y * self.width + min_x;
         self.rasterizer
