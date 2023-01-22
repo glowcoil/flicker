@@ -76,6 +76,15 @@ pub trait Task {
     fn run<A: Arch>(self) -> Self::Result;
 }
 
+impl<F, R> Task for F where F: FnOnce() -> R {
+    type Result = R;
+
+    #[inline(always)]
+    fn run<A: Arch>(self) -> Self::Result {
+        self()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::num::Wrapping;
