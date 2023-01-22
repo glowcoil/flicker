@@ -5,21 +5,21 @@ use std::num::Wrapping;
 use std::ops::*;
 use std::slice;
 
-use super::{Arch, Float, Int, PossibleArch, Simd, SupportedArch, Task};
+use super::{Arch, Float, Int, PossibleArch, Simd, SupportedArch, WithArch};
 
 pub struct Scalar;
 
 impl PossibleArch for Scalar {
     #[inline]
-    fn try_invoke<T: Task>(task: T) -> Option<T::Result> {
-        Some(ScalarImpl::invoke(task))
+    fn try_with<F: WithArch>(f: F) -> Option<F::Result> {
+        Some(f.run::<ScalarImpl>())
     }
 }
 
 impl SupportedArch for Scalar {
     #[inline]
-    fn invoke<T: Task>(task: T) -> T::Result {
-        ScalarImpl::invoke(task)
+    fn with<F: WithArch>(f: F) -> F::Result {
+        f.run::<ScalarImpl>()
     }
 }
 
@@ -29,8 +29,12 @@ impl Arch for ScalarImpl {
     type f32 = f32x1;
     type u32 = u32x1;
 
-    fn invoke<T: Task>(task: T) -> T::Result {
-        task.run::<ScalarImpl>()
+    #[inline]
+    fn invoke<F, R>(f: F) -> R
+    where
+        F: FnOnce() -> R,
+    {
+        f()
     }
 }
 

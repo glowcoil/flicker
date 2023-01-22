@@ -20,7 +20,9 @@ pub trait Arch {
     type f32: Simd<Elem = f32> + Float + From<Self::u32>;
     type u32: Simd<Elem = u32> + Int + From<Self::f32>;
 
-    fn invoke<T: Task>(task: T) -> T::Result;
+    fn invoke<F, R>(f: F) -> R
+    where
+        F: FnOnce() -> R;
 }
 
 pub trait Simd: Copy + Clone + Debug + Default + Send + Sync + Sized
@@ -63,26 +65,17 @@ where
 }
 
 pub trait PossibleArch {
-    fn try_invoke<T: Task>(task: T) -> Option<T::Result>;
+    fn try_with<F: WithArch>(f: F) -> Option<F::Result>;
 }
 
 pub trait SupportedArch {
-    fn invoke<T: Task>(task: T) -> T::Result;
+    fn with<F: WithArch>(f: F) -> F::Result;
 }
 
-pub trait Task {
+pub trait WithArch {
     type Result;
 
     fn run<A: Arch>(self) -> Self::Result;
-}
-
-impl<F, R> Task for F where F: FnOnce() -> R {
-    type Result = R;
-
-    #[inline(always)]
-    fn run<A: Arch>(self) -> Self::Result {
-        self()
-    }
 }
 
 #[cfg(test)]
@@ -93,7 +86,7 @@ mod tests {
 
     struct TestF32;
 
-    impl Task for TestF32 {
+    impl WithArch for TestF32 {
         type Result = ();
 
         #[inline(always)]
@@ -254,24 +247,24 @@ mod tests {
 
     #[test]
     fn scalar_f32() {
-        Scalar::invoke::<TestF32>(TestF32);
+        Scalar::with(TestF32);
     }
 
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     #[test]
     fn sse2_f32() {
-        Sse2::try_invoke::<TestF32>(TestF32);
+        Sse2::try_with(TestF32);
     }
 
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     #[test]
     fn avx2_f32() {
-        Avx2::try_invoke::<TestF32>(TestF32);
+        Avx2::try_with(TestF32);
     }
 
     struct TestU32;
 
-    impl Task for TestU32 {
+    impl WithArch for TestU32 {
         type Result = ();
 
         #[inline(always)]
@@ -349,18 +342,18 @@ mod tests {
 
     #[test]
     fn scalar_u32() {
-        Scalar::invoke::<TestU32>(TestU32);
+        Scalar::with(TestU32);
     }
 
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     #[test]
     fn sse2_u32() {
-        Sse2::try_invoke::<TestU32>(TestU32);
+        Sse2::try_with(TestU32);
     }
 
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     #[test]
     fn avx2_u32() {
-        Avx2::try_invoke::<TestU32>(TestU32);
+        Avx2::try_with(TestU32);
     }
 }

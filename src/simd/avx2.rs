@@ -9,15 +9,15 @@ use std::arch::x86::*;
 #[cfg(target_arch = "x86_64")]
 use std::arch::x86_64::*;
 
-use super::{Arch, Float, Int, PossibleArch, Simd, Task};
+use super::{Arch, Float, Int, PossibleArch, Simd, WithArch};
 
 pub struct Avx2;
 
 impl PossibleArch for Avx2 {
     #[inline]
-    fn try_invoke<T: Task>(task: T) -> Option<T::Result> {
+    fn try_with<F: WithArch>(f: F) -> Option<F::Result> {
         if is_x86_feature_detected!("avx2") {
-            Some(Avx2Impl::invoke(task))
+            Some(f.run::<Avx2Impl>())
         } else {
             None
         }
@@ -30,8 +30,8 @@ use super::SupportedArch;
 #[cfg(target_feature = "avx2")]
 impl SupportedArch for Avx2 {
     #[inline]
-    fn invoke<T: Task>(task: T) -> T::Result {
-        Avx2Impl::invoke(task)
+    fn with<F: WithArch>(f: F) -> F::Result {
+        f.run::<Avx2Impl>()
     }
 }
 
@@ -41,14 +41,21 @@ impl Arch for Avx2Impl {
     type f32 = f32x8;
     type u32 = u32x8;
 
-    fn invoke<T: Task>(task: T) -> T::Result {
+    #[inline]
+    fn invoke<F, R>(f: F) -> R
+    where
+        F: FnOnce() -> R,
+    {
         #[inline]
         #[target_feature(enable = "avx2")]
-        unsafe fn inner<T: Task>(task: T) -> T::Result {
-            task.run::<Avx2Impl>()
+        unsafe fn inner<F, R>(f: F) -> R
+        where
+            F: FnOnce() -> R,
+        {
+            f()
         }
 
-        unsafe { inner(task) }
+        unsafe { inner(f) }
     }
 }
 

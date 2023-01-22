@@ -25,7 +25,7 @@ impl Methods {
     fn specialize() -> Methods {
         struct Specialize;
 
-        impl Task for Specialize {
+        impl WithArch for Specialize {
             type Result = Methods;
 
             fn run<A: Arch>(self) -> Methods {
@@ -37,10 +37,10 @@ impl Methods {
             }
         }
 
-        if let Some(methods) = Avx2::try_invoke(Specialize) {
+        if let Some(methods) = Avx2::try_with(Specialize) {
             methods
         } else {
-            Sse2::invoke(Specialize)
+            Sse2::with(Specialize)
         }
     }
 }
