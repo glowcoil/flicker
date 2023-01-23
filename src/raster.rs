@@ -256,11 +256,13 @@ impl Rasterizer {
         A::invoke(
             #[inline(always)]
             || {
-                let a = A::f32::from(color.a() as f32);
-                let a_unit = a * A::f32::from(1.0 / 255.0);
-                let r = a_unit * A::f32::from(color.r() as f32);
-                let g = a_unit * A::f32::from(color.g() as f32);
-                let b = a_unit * A::f32::from(color.b() as f32);
+                let a_unit = A::f32::from(color.a() as f32 * (1.0 / 255.0));
+                let src = Pixels {
+                    a: A::f32::from(color.a() as f32),
+                    r: a_unit * A::f32::from(color.r() as f32),
+                    g: a_unit * A::f32::from(color.g() as f32),
+                    b: a_unit * A::f32::from(color.b() as f32),
+                };
 
                 for y in 0..self.height {
                     let mut accum = 0.0;
@@ -310,25 +312,21 @@ impl Rasterizer {
                             if coverage > 254.5 / 255.0 && color.a() == 255 {
                                 pixels_row[x..next_x].fill(color.into());
                             } else if coverage > 0.5 / 255.0 {
-                                for pixels_slice in pixels_row[x..next_x].chunks_mut(A::u32::LANES)
-                                {
+                                let mut pixels_chunks =
+                                    pixels_row[x..next_x].chunks_exact_mut(A::u32::LANES);
+
+                                for pixels_slice in &mut pixels_chunks {
                                     let mask = A::f32::from(coverage);
-                                    let pixels = A::u32::load_partial(pixels_slice);
+                                    let dst = Pixels::<A>::unpack(A::u32::load(pixels_slice));
+                                    dst.blend(src, mask).pack().store(pixels_slice);
+                                }
 
-                                    let dst_a = A::f32::from((pixels >> 24) & A::u32::from(0xFF));
-                                    let dst_r = A::f32::from((pixels >> 16) & A::u32::from(0xFF));
-                                    let dst_g = A::f32::from((pixels >> 8) & A::u32::from(0xFF));
-                                    let dst_b = A::f32::from((pixels >> 0) & A::u32::from(0xFF));
-
-                                    let inv_a = A::f32::from(1.0) - mask * a_unit;
-                                    let out_a = A::u32::from(mask * a + inv_a * dst_a);
-                                    let out_r = A::u32::from(mask * r + inv_a * dst_r);
-                                    let out_g = A::u32::from(mask * g + inv_a * dst_g);
-                                    let out_b = A::u32::from(mask * b + inv_a * dst_b);
-
-                                    let out =
-                                        (out_a << 24) | (out_r << 16) | (out_g << 8) | (out_b << 0);
-                                    out.store_partial(pixels_slice);
+                                let pixels_remainder = pixels_chunks.into_remainder();
+                                if !pixels_remainder.is_empty() {
+                                    let mask = A::f32::from(coverage);
+                                    let dst =
+                                        Pixels::unpack(A::u32::load_partial(pixels_remainder));
+                                    dst.blend(src, mask).pack().store_partial(pixels_remainder);
                                 }
                             }
                         }
@@ -364,14 +362,16 @@ impl Rasterizer {
                         // Composite an edge span.
                         if next_x > x {
                             let coverage_slice = &mut coverage_row[x..next_x];
-                            let coverage_chunks = coverage_slice.chunks_mut(A::f32::LANES);
+                            let mut coverage_chunks =
+                                coverage_slice.chunks_exact_mut(A::f32::LANES);
 
                             let pixels_slice = &mut pixels_row[x..next_x];
-                            let pixels_chunks = pixels_slice.chunks_mut(A::u32::LANES);
+                            let mut pixels_chunks = pixels_slice.chunks_exact_mut(A::u32::LANES);
 
-                            for (coverage_chunk, pixels_chunk) in coverage_chunks.zip(pixels_chunks)
+                            for (coverage_chunk, pixels_chunk) in
+                                (&mut coverage_chunks).zip(&mut pixels_chunks)
                             {
-                                let deltas = A::f32::load_partial(coverage_chunk);
+                                let deltas = A::f32::load(coverage_chunk);
                                 let accums = A::f32::from(accum) + deltas.scan_sum();
                                 accum = accums.last();
                                 let mask = accums.abs().min(A::f32::from(1.0));
@@ -379,22 +379,23 @@ impl Rasterizer {
 
                                 coverage_chunk.fill(0.0);
 
-                                let pixels = A::u32::load_partial(pixels_chunk);
+                                let dst = Pixels::unpack(A::u32::load(pixels_chunk));
+                                dst.blend(src, mask).pack().store(pixels_chunk);
+                            }
 
-                                let dst_a = A::f32::from((pixels >> 24) & A::u32::from(0xFF));
-                                let dst_r = A::f32::from((pixels >> 16) & A::u32::from(0xFF));
-                                let dst_g = A::f32::from((pixels >> 8) & A::u32::from(0xFF));
-                                let dst_b = A::f32::from((pixels >> 0) & A::u32::from(0xFF));
+                            let coverage_remainder = coverage_chunks.into_remainder();
+                            let pixels_remainder = pixels_chunks.into_remainder();
+                            if !pixels_remainder.is_empty() && !coverage_remainder.is_empty() {
+                                let deltas = A::f32::load_partial(coverage_remainder);
+                                let accums = A::f32::from(accum) + deltas.scan_sum();
+                                accum = accums.last();
+                                let mask = accums.abs().min(A::f32::from(1.0));
+                                coverage = mask.last();
 
-                                let inv_a = A::f32::from(1.0) - mask * a_unit;
-                                let out_a = A::u32::from(mask * a + inv_a * dst_a);
-                                let out_r = A::u32::from(mask * r + inv_a * dst_r);
-                                let out_g = A::u32::from(mask * g + inv_a * dst_g);
-                                let out_b = A::u32::from(mask * b + inv_a * dst_b);
+                                coverage_remainder.fill(0.0);
 
-                                let out =
-                                    (out_a << 24) | (out_r << 16) | (out_g << 8) | (out_b << 0);
-                                out.store_partial(pixels_chunk);
+                                let dst = Pixels::unpack(A::u32::load_partial(pixels_remainder));
+                                dst.blend(src, mask).pack().store_partial(pixels_remainder);
                             }
                         }
 
@@ -403,6 +404,72 @@ impl Rasterizer {
                             break;
                         }
                     }
+                }
+            },
+        )
+    }
+}
+
+struct Pixels<A: Arch> {
+    a: A::f32,
+    r: A::f32,
+    g: A::f32,
+    b: A::f32,
+}
+
+impl<A: Arch> Clone for Pixels<A> {
+    fn clone(&self) -> Self {
+        Pixels {
+            a: self.a,
+            r: self.r,
+            g: self.g,
+            b: self.b,
+        }
+    }
+}
+
+impl<A: Arch> Copy for Pixels<A> {}
+
+impl<A: Arch> Pixels<A> {
+    #[inline]
+    fn unpack(data: A::u32) -> Self {
+        A::invoke(
+            #[inline(always)]
+            || Pixels {
+                a: A::f32::from((data >> 24) & A::u32::from(0xFF)),
+                r: A::f32::from((data >> 16) & A::u32::from(0xFF)),
+                g: A::f32::from((data >> 8) & A::u32::from(0xFF)),
+                b: A::f32::from((data >> 0) & A::u32::from(0xFF)),
+            },
+        )
+    }
+
+    #[inline]
+    fn pack(self) -> A::u32 {
+        A::invoke(
+            #[inline(always)]
+            || {
+                let a = A::u32::from(self.a);
+                let r = A::u32::from(self.r);
+                let g = A::u32::from(self.g);
+                let b = A::u32::from(self.b);
+
+                (a << 24) | (r << 16) | (g << 8) | (b << 0)
+            },
+        )
+    }
+
+    #[inline]
+    fn blend(self, src: Self, mask: A::f32) -> Self {
+        A::invoke(
+            #[inline(always)]
+            || {
+                let inv_a = A::f32::from(1.0) - mask * A::f32::from(1.0 / 255.0) * src.a;
+                Pixels {
+                    a: mask * src.a + inv_a * self.a,
+                    r: mask * src.r + inv_a * self.r,
+                    g: mask * src.g + inv_a * self.g,
+                    b: mask * src.b + inv_a * self.b,
                 }
             },
         )
