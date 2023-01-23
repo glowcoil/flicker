@@ -8,6 +8,14 @@ mod sse2;
 use std::fmt::Debug;
 use std::ops::*;
 
+macro_rules! inline_always {
+    ($body:expr) => {
+        #[inline(always)]
+        $body
+    };
+}
+pub(crate) use inline_always;
+
 pub use scalar::Scalar;
 
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
