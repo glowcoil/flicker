@@ -239,7 +239,7 @@ impl Float for f32x8 {
     #[inline(always)]
     fn scan_sum(self) -> Self {
         #[inline]
-        #[target_feature(enable = "sse2")]
+        #[target_feature(enable = "avx2")]
         unsafe fn inner(value: f32x8) -> f32x8 {
             // First, perform two separate prefix sums in the upper and lower 4 lanes:
             let shifted = _mm256_castsi256_ps(_mm256_slli_si256(_mm256_castps_si256(value.0), 4));
