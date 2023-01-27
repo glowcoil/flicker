@@ -8,13 +8,15 @@ mod sse2;
 use std::fmt::Debug;
 use std::ops::*;
 
-macro_rules! inline_always {
-    ($body:expr) => {
-        #[inline(always)]
-        $body
+macro_rules! invoke {
+    ($arch:ident, $body:block) => {
+        A::invoke(
+            #[inline(always)]
+            || $body,
+        )
     };
 }
-pub(crate) use inline_always;
+pub(crate) use invoke;
 
 pub use scalar::Scalar;
 

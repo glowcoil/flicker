@@ -92,7 +92,7 @@ impl Rasterizer {
     }
 
     fn add_segments_inner<A: Arch>(&mut self, segments: &[Segment]) {
-        A::invoke(inline_always!(|| {
+        invoke!(A, {
             for Segment { p1, p2 } in segments {
                 let mut x = (p1.x + 1.0) as isize - 1;
                 let mut y = (p1.y + 1.0) as isize - 1;
@@ -201,7 +201,7 @@ impl Rasterizer {
 
                 self.add_delta::<A>(x, y, height, area);
             }
-        }))
+        })
     }
 
     #[inline(always)]
@@ -249,7 +249,7 @@ impl Rasterizer {
     }
 
     fn finish_inner<A: Arch>(&mut self, color: Color, data: &mut [u32], stride: usize) {
-        A::invoke(inline_always!(|| {
+        invoke!(A, {
             let a_unit = A::f32::from(color.a() as f32 * (1.0 / 255.0));
             let src = Pixels {
                 a: A::f32::from(color.a() as f32),
@@ -395,7 +395,7 @@ impl Rasterizer {
                     }
                 }
             }
-        }))
+        })
     }
 }
 
@@ -422,29 +422,31 @@ impl<A: Arch> Copy for Pixels<A> {}
 impl<A: Arch> Pixels<A> {
     #[inline]
     fn unpack(data: A::u32) -> Self {
-        A::invoke(inline_always!(|| Pixels {
-            a: A::f32::from((data >> 24) & A::u32::from(0xFF)),
-            r: A::f32::from((data >> 16) & A::u32::from(0xFF)),
-            g: A::f32::from((data >> 8) & A::u32::from(0xFF)),
-            b: A::f32::from((data >> 0) & A::u32::from(0xFF)),
-        }))
+        invoke!(A, {
+            Pixels {
+                a: A::f32::from((data >> 24) & A::u32::from(0xFF)),
+                r: A::f32::from((data >> 16) & A::u32::from(0xFF)),
+                g: A::f32::from((data >> 8) & A::u32::from(0xFF)),
+                b: A::f32::from((data >> 0) & A::u32::from(0xFF)),
+            }
+        })
     }
 
     #[inline]
     fn pack(self) -> A::u32 {
-        A::invoke(inline_always!(|| {
+        invoke!(A, {
             let a = A::u32::from(self.a);
             let r = A::u32::from(self.r);
             let g = A::u32::from(self.g);
             let b = A::u32::from(self.b);
 
             (a << 24) | (r << 16) | (g << 8) | (b << 0)
-        }))
+        })
     }
 
     #[inline]
     fn blend(self, src: Self, mask: A::f32) -> Self {
-        A::invoke(inline_always!(|| {
+        invoke!(A, {
             let inv_a = A::f32::from(1.0) - mask * A::f32::from(1.0 / 255.0) * src.a;
             Pixels {
                 a: mask * src.a + inv_a * self.a,
@@ -452,6 +454,6 @@ impl<A: Arch> Pixels<A> {
                 g: mask * src.g + inv_a * self.g,
                 b: mask * src.b + inv_a * self.b,
             }
-        }))
+        })
     }
 }
