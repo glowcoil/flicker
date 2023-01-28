@@ -94,154 +94,85 @@ impl Rasterizer {
     fn add_segments_inner<A: Arch>(&mut self, segments: &[Segment]) {
         invoke!(A, {
             for Segment { p1, p2 } in segments {
-                let mut x = (p1.x + 1.0) as isize - 1;
-                let mut y = (p1.y + 1.0) as isize - 1;
-
-                let x_end = (p2.x + 1.0) as isize - 1;
-                let y_end = (p2.y + 1.0) as isize - 1;
-
-                if (x >= self.width as isize && x_end >= self.width as isize)
-                    || (y >= self.height as isize && y_end >= self.height as isize)
-                    || (y < 0 && y_end < 0)
-                {
+                if p1.y == p2.y {
                     continue;
                 }
 
-                if x == x_end && y == y_end {
-                    let height = p2.y - p1.y;
-                    let area = 0.5 * height * ((x as f32 + 1.0 - p1.x) + (x as f32 + 1.0 - p2.x));
-                    self.add_delta::<A>(x, y, height, area);
-                    continue;
-                }
+                let y_min = p1.y.min(p2.y);
+                let y_max = p1.y.max(p2.y);
 
-                let x_inc;
-                let mut x_offset;
-                let x_offset_end;
-                let dx;
-                let area_offset;
-                let area_sign;
-                if p2.x > p1.x {
-                    x_inc = 1;
-                    x_offset = p1.x - x as f32;
-                    x_offset_end = p2.x - x_end as f32;
-                    dx = p2.x - p1.x;
-                    area_offset = 2.0;
-                    area_sign = -1.0;
-                } else {
-                    x_inc = -1;
-                    x_offset = 1.0 - (p1.x - x as f32);
-                    x_offset_end = 1.0 - (p2.x - x_end as f32);
-                    dx = p1.x - p2.x;
-                    area_offset = 0.0;
-                    area_sign = 1.0;
-                }
+                let row_min = (y_min as isize).max(0).min(self.height as isize) as usize;
+                let row_max = (y_max as isize + 1).max(0).min(self.height as isize) as usize;
 
-                let y_inc;
-                let mut y_offset;
-                let y_offset_end;
-                let dy;
-                let sign;
-                if p2.y > p1.y {
-                    y_inc = 1;
-                    y_offset = p1.y - y as f32;
-                    y_offset_end = p2.y - y_end as f32;
-                    dy = p2.y - p1.y;
-                    sign = 1.0;
-                } else {
-                    y_inc = -1;
-                    y_offset = 1.0 - (p1.y - y as f32);
-                    y_offset_end = 1.0 - (p2.y - y_end as f32);
-                    dy = p1.y - p2.y;
-                    sign = -1.0;
-                }
-
+                let dx = p2.x - p1.x;
+                let dy = p2.y - p1.y;
                 let dxdy = dx / dy;
                 let dydx = dy / dx;
 
-                let mut y_offset_for_prev_x = y_offset - dydx * x_offset;
-                let mut x_offset_for_prev_y = x_offset - dxdy * y_offset;
+                for row in row_min..row_max {
+                    let row_y = row as f32;
+                    let row_y1 = row_y.max(y_min);
+                    let row_y2 = (row_y + 1.0).min(y_max);
 
-                while x != x_end || y != y_end {
-                    let col = x;
-                    let row = y;
+                    let row_y1_x = p1.x + dxdy * (row_y1 - p1.y);
+                    let row_y2_x = p1.x + dxdy * (row_y2 - p1.y);
 
-                    let x1 = x_offset;
-                    let y1 = y_offset;
+                    let row_x1 = row_y1_x.min(row_y2_x);
+                    let row_x2 = row_y1_x.max(row_y2_x);
 
-                    let x2;
-                    let y2;
-                    if y != y_end && (x == x_end || x_offset_for_prev_y + dxdy < 1.0) {
-                        y_offset = 0.0;
-                        x_offset = x_offset_for_prev_y + dxdy;
-                        x_offset_for_prev_y = x_offset;
-                        y_offset_for_prev_x -= 1.0;
-                        y += y_inc;
+                    let col_min = (row_x1 as isize).max(0).min(self.width as isize) as usize;
+                    let col_max = (row_x2 as isize + 2).max(1).min(self.width as isize) as usize;
 
-                        x2 = x_offset;
-                        y2 = 1.0;
+                    let mut carry = if row_x1 < 0.0 {
+                        if row_x2 < 0.0 {
+                            (row_y2 - row_y1).copysign(dy)
+                        } else {
+                            (dydx * (0.0 - row_x1)).copysign(dy)
+                        }
                     } else {
-                        x_offset = 0.0;
-                        y_offset = y_offset_for_prev_x + dydx;
-                        x_offset_for_prev_y -= 1.0;
-                        y_offset_for_prev_x = y_offset;
-                        x += x_inc;
+                        0.0
+                    };
 
-                        x2 = 1.0;
-                        y2 = y_offset;
+                    let row_start = row * self.width;
+                    let coverage = &mut self.coverage[row_start + col_min..row_start + col_max];
+                    for (col, pixel) in (col_min..col_max).zip(coverage) {
+                        let col_x = col as f32;
+
+                        if col_x > row_x2 {
+                            *pixel += carry;
+                            break;
+                        }
+
+                        let col_x1 = col_x.max(row_x1);
+                        let col_x2 = (col_x + 1.0).min(row_x2).max(col_x1);
+
+                        let col_y1;
+                        let col_y2;
+                        if dx == 0.0 {
+                            col_y1 = row_y1;
+                            col_y2 = row_y2;
+                        } else {
+                            col_y1 = p1.x + dydx * (col_x1 - p1.x);
+                            col_y2 = p1.x + dydx * (col_x2 - p1.x);
+                        }
+
+                        let height = (col_y2 - col_y1).copysign(dy);
+                        let area = 0.5 * height * ((col_x + 1.0 - col_x1) + (col_x + 1.0 - col_x2));
+
+                        *pixel += carry + area;
+                        carry = height - area;
                     }
 
-                    let height = sign * (y2 - y1);
-                    let area = 0.5 * height * (area_offset + area_sign * (x1 + x2));
-
-                    self.add_delta::<A>(col, row, height, area);
+                    for col in col_min..col_max {
+                        let bitmask_index = row * self.bitmasks_width
+                            + (col >> Consts::<A>::PIXELS_PER_BITMASK_SHIFT);
+                        let bit_index = (col >> Consts::<A>::PIXELS_PER_BIT_SHIFT)
+                            & (Consts::<A>::BITS_PER_BITMASK - 1);
+                        self.bitmasks[bitmask_index] |= 1 << bit_index;
+                    }
                 }
-
-                let height = sign * (y_offset_end - y_offset);
-                let area = 0.5 * height * (area_offset + area_sign * (x_offset + x_offset_end));
-
-                self.add_delta::<A>(x, y, height, area);
             }
         })
-    }
-
-    #[inline(always)]
-    fn mark_cell<A: Arch>(&mut self, x: usize, y: usize) {
-        let bitmask_index = y * self.bitmasks_width + (x >> Consts::<A>::PIXELS_PER_BITMASK_SHIFT);
-        let bit_index =
-            (x >> Consts::<A>::PIXELS_PER_BIT_SHIFT) & (Consts::<A>::BITS_PER_BITMASK - 1);
-        self.bitmasks[bitmask_index] |= 1 << bit_index;
-    }
-
-    #[inline(always)]
-    fn add_delta<A: Arch>(&mut self, x: isize, y: isize, height: f32, area: f32) {
-        if y < 0 || y >= self.height as isize || x >= self.width as isize {
-            return;
-        }
-
-        if x < 0 {
-            let coverage_index = y as usize * self.width;
-            self.coverage[coverage_index] += height;
-
-            self.mark_cell::<A>(0, y as usize);
-
-            return;
-        }
-
-        if x == self.width as isize - 1 {
-            let coverage_index = y as usize * self.width + x as usize;
-            self.coverage[coverage_index] += area;
-
-            self.mark_cell::<A>(x as usize, y as usize);
-
-            return;
-        }
-
-        let coverage_index = y as usize * self.width + x as usize;
-        self.coverage[coverage_index] += area;
-        self.coverage[coverage_index + 1] += height - area;
-
-        self.mark_cell::<A>(x as usize, y as usize);
-        self.mark_cell::<A>(x as usize + 1, y as usize);
     }
 
     pub fn finish(&mut self, color: Color, data: &mut [u32], stride: usize) {
