@@ -121,7 +121,7 @@ impl Rasterizer {
                     let row_x2 = row_y1_x.max(row_y2_x);
 
                     let col_min = (row_x1 as isize).max(0).min(self.width as isize) as usize;
-                    let col_max = (row_x2 as isize + 2).max(1).min(self.width as isize) as usize;
+                    let col_max = (row_x2 as isize + 1).max(0).min(self.width as isize) as usize;
 
                     let mut carry = if row_x1 < 0.0 {
                         if row_x2 < 0.0 {
@@ -137,11 +137,6 @@ impl Rasterizer {
                     let coverage = &mut self.coverage[row_start + col_min..row_start + col_max];
                     for (col, pixel) in (col_min..col_max).zip(coverage) {
                         let col_x = col as f32;
-
-                        if col_x > row_x2 {
-                            *pixel += carry;
-                            break;
-                        }
 
                         let col_x1 = col_x.max(row_x1);
                         let col_x2 = (col_x + 1.0).min(row_x2).max(col_x1);
@@ -163,7 +158,11 @@ impl Rasterizer {
                         carry = height - area;
                     }
 
-                    for col in col_min..col_max {
+                    if col_max < self.width {
+                        self.coverage[row_start + col_max] += carry;
+                    }
+
+                    for col in col_min..(col_max + 1).min(self.width) {
                         let bitmask_index = row * self.bitmasks_width
                             + (col >> Consts::<A>::PIXELS_PER_BITMASK_SHIFT);
                         let bit_index = (col >> Consts::<A>::PIXELS_PER_BIT_SHIFT)
