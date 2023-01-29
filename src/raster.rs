@@ -120,59 +120,74 @@ impl Rasterizer {
                     let row_x1 = row_y1_x.min(row_y2_x);
                     let row_x2 = row_y1_x.max(row_y2_x);
 
-                    let col_min = (row_x1 as isize).max(0).min(self.width as isize) as usize;
-                    let col_max = (row_x2 as isize + 1).max(0).min(self.width as isize) as usize;
+                    let row_x1_int = row_x1 as isize;
+                    let row_x2_int = row_x2 as isize;
 
-                    let mut carry = if row_x1 < 0.0 {
-                        if row_x2 < 0.0 {
+                    let col_min = row_x1_int.max(0).min(self.width as isize) as usize;
+                    let col_max = (row_x2_int + 1).max(0).min(self.width as isize) as usize;
+
+                    let row_start = row * self.width;
+                    let mut carry = 0.0;
+
+                    if row_x1 < 0.0 {
+                        carry = if row_x2 < 0.0 {
                             (row_y2 - row_y1).copysign(dy)
                         } else {
                             (dydx * (0.0 - row_x1)).copysign(dy)
+                        };
+                    }
+
+                    if row_x1_int == row_x2_int {
+                        let col = col_min;
+                        if col < col_max {
+                            let col_x = col as f32;
+
+                            let height = (row_y2 - row_y1).copysign(dy);
+                            let area = 0.5 * height * ((col_x + 1.0 - row_x1) + (col_x + 1.0 - row_x2));
+
+                            self.coverage[row_start + col] += carry + area;
+                            carry = height - area;
                         }
                     } else {
-                        0.0
-                    };
+                        let mut col = col_min;
+                        if col < col_max {
+                            let col_x = col as f32;
 
-                    let row_start = row * self.width;
+                            let col_x2 = (col_x + 1.0).min(row_x2);
 
-                    let mut col = col_min;
-                    if col < col_max {
-                        let col_x = col as f32;
+                            let height = if dx == 0.0 {
+                                row_y2 - row_y1
+                            } else {
+                                dydx.abs() * (col_x2 - row_x1)
+                            };
 
-                        let col_x2 = (col_x + 1.0).min(row_x2);
+                            let height = height.copysign(dy);
+                            let area = 0.5 * height * ((col_x + 1.0 - row_x1) + (col_x + 1.0 - col_x2));
 
-                        let height = if dx == 0.0 {
-                            row_y2 - row_y1
-                        } else {
-                            dydx.abs() * (col_x2 - row_x1)
-                        };
+                            self.coverage[row_start + col] += carry + area;
+                            carry = height - area;
 
-                        let height = height.copysign(dy);
-                        let area = 0.5 * height * ((col_x + 1.0 - row_x1) + (col_x + 1.0 - col_x2));
+                            col += 1;
+                        }
 
-                        self.coverage[row_start + col] += carry + area;
-                        carry = height - area;
+                        let area = 0.5 * dydx.copysign(dy);
+                        while col + 1 < col_max {
+                            self.coverage[row_start + col] += carry + area;
+                            carry = area;
+                            col += 1;
+                        }
 
-                        col += 1;
-                    }
+                        if col < col_max {
+                            let col_x = col as f32;
 
-                    let area = 0.5 * dydx.copysign(dy);
-                    while col + 1 < col_max {
-                        self.coverage[row_start + col] += carry + area;
-                        carry = area;
-                        col += 1;
-                    }
+                            let height = (dydx.abs() * (row_x2 - col_x)).copysign(dy);
+                            let area = 0.5 * height * (2.0 + col_x - row_x2);
 
-                    if col < col_max {
-                        let col_x = col as f32;
+                            self.coverage[row_start + col] += carry + area;
+                            carry = height - area;
 
-                        let height = (dydx.abs() * (row_x2 - col_x)).copysign(dy);
-                        let area = 0.5 * height * (2.0 + col_x - row_x2);
-
-                        self.coverage[row_start + col] += carry + area;
-                        carry = height - area;
-
-                        col += 1;
+                            col += 1;
+                        }
                     }
 
                     if col_max < self.width {
