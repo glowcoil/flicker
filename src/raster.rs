@@ -139,21 +139,16 @@ impl Rasterizer {
                     if col < col_max {
                         let col_x = col as f32;
 
-                        let col_x1 = col_x.max(row_x1);
                         let col_x2 = (col_x + 1.0).min(row_x2);
 
-                        let col_y1;
-                        let col_y2;
-                        if dx == 0.0 {
-                            col_y1 = row_y1;
-                            col_y2 = row_y2;
+                        let height = if dx == 0.0 {
+                            row_y2 - row_y1
                         } else {
-                            col_y1 = p1.x + dydx * (col_x1 - p1.x);
-                            col_y2 = p1.x + dydx * (col_x2 - p1.x);
-                        }
+                            dydx.abs() * (col_x2 - row_x1)
+                        };
 
-                        let height = (col_y2 - col_y1).copysign(dy);
-                        let area = 0.5 * height * ((col_x + 1.0 - col_x1) + (col_x + 1.0 - col_x2));
+                        let height = height.copysign(dy);
+                        let area = 0.5 * height * ((col_x + 1.0 - row_x1) + (col_x + 1.0 - col_x2));
 
                         self.coverage[row_start + col] += carry + area;
                         carry = height - area;
@@ -171,21 +166,8 @@ impl Rasterizer {
                     if col < col_max {
                         let col_x = col as f32;
 
-                        let col_x1 = col_x.max(row_x1);
-                        let col_x2 = (col_x + 1.0).min(row_x2);
-
-                        let col_y1;
-                        let col_y2;
-                        if dx == 0.0 {
-                            col_y1 = row_y1;
-                            col_y2 = row_y2;
-                        } else {
-                            col_y1 = p1.x + dydx * (col_x1 - p1.x);
-                            col_y2 = p1.x + dydx * (col_x2 - p1.x);
-                        }
-
-                        let height = (col_y2 - col_y1).copysign(dy);
-                        let area = 0.5 * height * ((col_x + 1.0 - col_x1) + (col_x + 1.0 - col_x2));
+                        let height = (dydx.abs() * (row_x2 - col_x)).copysign(dy);
+                        let area = 0.5 * height * (2.0 + col_x - row_x2);
 
                         self.coverage[row_start + col] += carry + area;
                         carry = height - area;
