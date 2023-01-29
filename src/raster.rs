@@ -153,16 +153,8 @@ impl Rasterizer {
                         if col < col_max {
                             let col_x = col as f32;
 
-                            let col_x2 = (col_x + 1.0).min(row_x2);
-
-                            let height = if dx == 0.0 {
-                                row_y2 - row_y1
-                            } else {
-                                dydx.abs() * (col_x2 - row_x1)
-                            };
-
-                            let height = height.copysign(dy);
-                            let area = 0.5 * height * ((col_x + 1.0 - row_x1) + (col_x + 1.0 - col_x2));
+                            let height = (dydx.abs() * (col_x + 1.0 - row_x1)).copysign(dy);
+                            let area = 0.5 * height * (1.0 + col_x - row_x1);
 
                             self.coverage[row_start + col] += carry + area;
                             carry = height - area;
