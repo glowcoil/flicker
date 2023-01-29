@@ -140,7 +140,7 @@ impl Rasterizer {
                         let col_x = col as f32;
 
                         let col_x1 = col_x.max(row_x1);
-                        let col_x2 = (col_x + 1.0).min(row_x2).max(col_x1);
+                        let col_x2 = (col_x + 1.0).min(row_x2);
 
                         let col_y1;
                         let col_y2;
@@ -172,7 +172,7 @@ impl Rasterizer {
                         let col_x = col as f32;
 
                         let col_x1 = col_x.max(row_x1);
-                        let col_x2 = (col_x + 1.0).min(row_x2).max(col_x1);
+                        let col_x2 = (col_x + 1.0).min(row_x2);
 
                         let col_y1;
                         let col_y2;
