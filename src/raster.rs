@@ -134,8 +134,9 @@ impl Rasterizer {
                     };
 
                     let row_start = row * self.width;
-                    let coverage = &mut self.coverage[row_start + col_min..row_start + col_max];
-                    for (col, pixel) in (col_min..col_max).zip(coverage) {
+
+                    let mut col = col_min;
+                    if col < col_max {
                         let col_x = col as f32;
 
                         let col_x1 = col_x.max(row_x1);
@@ -154,8 +155,42 @@ impl Rasterizer {
                         let height = (col_y2 - col_y1).copysign(dy);
                         let area = 0.5 * height * ((col_x + 1.0 - col_x1) + (col_x + 1.0 - col_x2));
 
-                        *pixel += carry + area;
+                        self.coverage[row_start + col] += carry + area;
                         carry = height - area;
+
+                        col += 1;
+                    }
+
+                    let area = 0.5 * dydx.copysign(dy);
+                    while col + 1 < col_max {
+                        self.coverage[row_start + col] += carry + area;
+                        carry = area;
+                        col += 1;
+                    }
+
+                    if col < col_max {
+                        let col_x = col as f32;
+
+                        let col_x1 = col_x.max(row_x1);
+                        let col_x2 = (col_x + 1.0).min(row_x2).max(col_x1);
+
+                        let col_y1;
+                        let col_y2;
+                        if dx == 0.0 {
+                            col_y1 = row_y1;
+                            col_y2 = row_y2;
+                        } else {
+                            col_y1 = p1.x + dydx * (col_x1 - p1.x);
+                            col_y2 = p1.x + dydx * (col_x2 - p1.x);
+                        }
+
+                        let height = (col_y2 - col_y1).copysign(dy);
+                        let area = 0.5 * height * ((col_x + 1.0 - col_x1) + (col_x + 1.0 - col_x2));
+
+                        self.coverage[row_start + col] += carry + area;
+                        carry = height - area;
+
+                        col += 1;
                     }
 
                     if col_max < self.width {
