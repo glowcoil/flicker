@@ -13,6 +13,7 @@ struct Consts<A: Arch>(std::marker::PhantomData<A>);
 
 impl<A: Arch> Consts<A> {
     const BITS_PER_BITMASK: usize = u64::BITS as usize;
+    const BITS_PER_BITMASK_SHIFT: usize = Self::BITS_PER_BITMASK.trailing_zeros() as usize;
 
     const PIXELS_PER_BIT: usize = A::u32::LANES;
     const PIXELS_PER_BIT_SHIFT: usize = Self::PIXELS_PER_BIT.trailing_zeros() as usize;
@@ -186,11 +187,14 @@ impl Rasterizer {
                         self.coverage[row_start + col_max] += carry;
                     }
 
-                    for col in col_min..(col_max + 1).min(self.width) {
-                        let bitmask_index = row * self.bitmasks_width
-                            + (col >> Consts::<A>::PIXELS_PER_BITMASK_SHIFT);
-                        let bit_index = (col >> Consts::<A>::PIXELS_PER_BIT_SHIFT)
-                            & (Consts::<A>::BITS_PER_BITMASK - 1);
+                    let cell_min = col_min >> Consts::<A>::PIXELS_PER_BIT_SHIFT;
+                    let cell_max = (col_max + 1 + Consts::<A>::PIXELS_PER_BIT - 1)
+                        >> Consts::<A>::PIXELS_PER_BIT_SHIFT;
+                    let bitmasks_row_start = row * self.bitmasks_width;
+                    for cell in cell_min..cell_max {
+                        let bitmask_index =
+                            bitmasks_row_start + (cell >> Consts::<A>::BITS_PER_BITMASK_SHIFT);
+                        let bit_index = cell & (Consts::<A>::BITS_PER_BITMASK - 1);
                         self.bitmasks[bitmask_index] |= 1 << bit_index;
                     }
                 }
