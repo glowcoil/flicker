@@ -107,7 +107,7 @@ impl Rasterizer {
                 let dx = p2.x - p1.x;
                 let dy = p2.y - p1.y;
                 let dxdy = dx / dy;
-                let dydx = dy / dx;
+                let dydx_abs = (dy / dx).abs();
 
                 for row in row_min..row_max {
                     let row_y = row as f32;
@@ -133,7 +133,7 @@ impl Rasterizer {
                         carry = if row_x2 < 0.0 {
                             (row_y2 - row_y1).copysign(dy)
                         } else {
-                            (dydx * (0.0 - row_x1)).copysign(dy)
+                            (dydx_abs * (0.0 - row_x1)).copysign(dy)
                         };
                     }
 
@@ -153,7 +153,7 @@ impl Rasterizer {
                         if col < col_max {
                             let col_x = col as f32;
 
-                            let height = (dydx.abs() * (col_x + 1.0 - row_x1)).copysign(dy);
+                            let height = (dydx_abs * (col_x + 1.0 - row_x1)).copysign(dy);
                             let area = 0.5 * height * (1.0 + col_x - row_x1);
 
                             self.coverage[row_start + col] += carry + area;
@@ -162,7 +162,7 @@ impl Rasterizer {
                             col += 1;
                         }
 
-                        let area = 0.5 * dydx.copysign(dy);
+                        let area = 0.5 * dydx_abs.copysign(dy);
                         while col + 1 < col_max {
                             self.coverage[row_start + col] += carry + area;
                             carry = area;
@@ -172,7 +172,7 @@ impl Rasterizer {
                         if col < col_max {
                             let col_x = col as f32;
 
-                            let height = (dydx.abs() * (row_x2 - col_x)).copysign(dy);
+                            let height = (dydx_abs * (row_x2 - col_x)).copysign(dy);
                             let area = 0.5 * height * (2.0 + col_x - row_x2);
 
                             self.coverage[row_start + col] += carry + area;
