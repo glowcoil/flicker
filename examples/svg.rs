@@ -74,7 +74,7 @@ impl WindowHandler for Handler {
             .clear(Color::rgba(255, 255, 255, 255));
 
         let time = std::time::Instant::now();
-        svg::render(&self.commands, &mut *self.canvas.borrow_mut());
+        svg::render(&self.commands, &Transform::id(), &mut *self.canvas.borrow_mut());
         let elapsed = time.elapsed();
 
         self.timer.borrow_mut().update(elapsed);

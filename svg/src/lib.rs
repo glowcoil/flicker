@@ -94,14 +94,14 @@ fn build_list(node: &usvg::Node, commands: &mut Vec<Command>) {
     }
 }
 
-pub fn render(commands: &[Command], canvas: &mut Canvas) {
+pub fn render(commands: &[Command], transform: &Transform, canvas: &mut Canvas) {
     for command in commands {
         match command.style {
             Style::Fill => {
-                canvas.fill_path(&command.path, &Transform::scale(2.0), command.color);
+                canvas.fill_path(&command.path, transform, command.color);
             }
             Style::Stroke(width) => {
-                canvas.stroke_path(&command.path, width, &Transform::scale(2.0), command.color);
+                canvas.stroke_path(&command.path, width, transform, command.color);
             }
         }
     }
