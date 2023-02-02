@@ -119,13 +119,17 @@ impl WindowHandler for Handler {
     }
 
     fn mouse_down(&self, window: &Window, button: MouseButton) -> bool {
-        self.dragging.set(true);
+        if button == MouseButton::Left {
+            self.dragging.set(true);
+        }
 
         true
     }
 
     fn mouse_up(&self, window: &Window, button: MouseButton) -> bool {
-        self.dragging.set(false);
+        if button == MouseButton::Left {
+            self.dragging.set(false);
+        }
 
         true
     }
