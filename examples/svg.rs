@@ -1,8 +1,8 @@
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::time::Duration;
 
-use flicker::{Canvas, Color, Font, Transform};
-use portlight::{Application, Rect, Window, WindowHandler, WindowOptions};
+use flicker::{Canvas, Color, Font, Transform, Vec2};
+use portlight::{Application, MouseButton, Point, Rect, Window, WindowHandler, WindowOptions};
 
 const WIDTH: usize = 1024;
 const HEIGHT: usize = 1024;
@@ -50,6 +50,9 @@ struct Handler {
     font: Font,
     commands: Vec<svg::Command>,
     timer: RefCell<FrameTimer>,
+    mouse_pos: Cell<Point>,
+    dragging: Cell<bool>,
+    transform: Cell<Transform>,
 }
 
 impl Handler {
@@ -59,6 +62,9 @@ impl Handler {
             font: Font::from_bytes(include_bytes!("res/SourceSansPro-Regular.otf"), 0).unwrap(),
             commands,
             timer: RefCell::new(FrameTimer::new()),
+            mouse_pos: Cell::new(Point { x: -1.0, y: -1.0 }),
+            dragging: Cell::new(false),
+            transform: Cell::new(Transform::id()),
         }
     }
 }
@@ -74,7 +80,11 @@ impl WindowHandler for Handler {
             .clear(Color::rgba(255, 255, 255, 255));
 
         let time = std::time::Instant::now();
-        svg::render(&self.commands, &Transform::id(), &mut *self.canvas.borrow_mut());
+        svg::render(
+            &self.commands,
+            &self.transform.get(),
+            &mut *self.canvas.borrow_mut(),
+        );
         let elapsed = time.elapsed();
 
         self.timer.borrow_mut().update(elapsed);
@@ -92,6 +102,49 @@ impl WindowHandler for Handler {
             self.canvas.borrow().width(),
             self.canvas.borrow().height(),
         );
+    }
+
+    fn mouse_move(&self, window: &Window, position: Point) {
+        if self.dragging.get() {
+            let prev = Vec2::new(self.mouse_pos.get().x as f32, self.mouse_pos.get().y as f32);
+            let curr = Vec2::new(position.x as f32, position.y as f32);
+            self.transform.set(
+                self.transform
+                    .get()
+                    .then(Transform::translate(curr.x - prev.x, curr.y - prev.y)),
+            );
+        }
+
+        self.mouse_pos.set(position);
+    }
+
+    fn mouse_down(&self, window: &Window, button: MouseButton) -> bool {
+        self.dragging.set(true);
+
+        true
+    }
+
+    fn mouse_up(&self, window: &Window, button: MouseButton) -> bool {
+        self.dragging.set(false);
+
+        true
+    }
+
+    fn scroll(&self, window: &Window, dx: f64, dy: f64) -> bool {
+        let mouse_pos = self.mouse_pos.get();
+
+        self.transform.set(
+            self.transform
+                .get()
+                .then(Transform::translate(
+                    -mouse_pos.x as f32,
+                    -mouse_pos.y as f32,
+                ))
+                .then(Transform::scale(1.02f32.powf(dy as f32)))
+                .then(Transform::translate(mouse_pos.x as f32, mouse_pos.y as f32)),
+        );
+
+        true
     }
 
     fn request_close(&self, window: &Window) {
