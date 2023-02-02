@@ -152,6 +152,11 @@ impl Mat2x2 {
     pub fn rotate(angle: f32) -> Mat2x2 {
         Mat2x2([angle.cos(), angle.sin(), -angle.sin(), angle.cos()])
     }
+
+    /// Computes the determinant of the matrix.
+    pub fn determinant(&self) -> f32 {
+        self.0[0] * self.0[3] - self.0[1] * self.0[2]
+    }
 }
 
 impl ops::Mul<Mat2x2> for Mat2x2 {
