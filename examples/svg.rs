@@ -104,7 +104,7 @@ impl WindowHandler for Handler {
         );
     }
 
-    fn mouse_move(&self, window: &Window, position: Point) {
+    fn mouse_move(&self, _window: &Window, position: Point) {
         if self.dragging.get() {
             let prev = Vec2::new(self.mouse_pos.get().x as f32, self.mouse_pos.get().y as f32);
             let curr = Vec2::new(position.x as f32, position.y as f32);
@@ -118,7 +118,7 @@ impl WindowHandler for Handler {
         self.mouse_pos.set(position);
     }
 
-    fn mouse_down(&self, window: &Window, button: MouseButton) -> bool {
+    fn mouse_down(&self, _window: &Window, button: MouseButton) -> bool {
         if button == MouseButton::Left {
             self.dragging.set(true);
         }
@@ -126,7 +126,7 @@ impl WindowHandler for Handler {
         true
     }
 
-    fn mouse_up(&self, window: &Window, button: MouseButton) -> bool {
+    fn mouse_up(&self, _window: &Window, button: MouseButton) -> bool {
         if button == MouseButton::Left {
             self.dragging.set(false);
         }
@@ -134,7 +134,7 @@ impl WindowHandler for Handler {
         true
     }
 
-    fn scroll(&self, window: &Window, dx: f64, dy: f64) -> bool {
+    fn scroll(&self, _window: &Window, _dx: f64, dy: f64) -> bool {
         let mouse_pos = self.mouse_pos.get();
 
         self.transform.set(
