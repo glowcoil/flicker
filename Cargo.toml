@@ -10,10 +10,15 @@ swash = { version = "0.1.4", features = ["scale"], default_features = false }
 zeno = "0.2.2"
 
 [dev-dependencies]
+svg = { path = "svg" }
 criterion = { version = "0.3", features = ["html_reports"] }
 portlight = { git = "https://github.com/coupler-rs/portlight", rev = "b2a925745733445adae8c6442ac66224527adea8" }
-usvg = "0.13.0"
 
 [[bench]]
 name = "tiger"
 harness = false
+
+[workspace]
+members = [
+    "svg"
+]
