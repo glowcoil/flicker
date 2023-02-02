@@ -27,16 +27,16 @@ impl FrameTimer {
     }
 
     fn update(&mut self, time: Duration) {
-        self.times[self.time_index] = time;
-
-        self.time_index = (self.time_index + 1) % AVERAGE_WINDOW;
-        if self.valid < AVERAGE_WINDOW {
-            self.valid += 1;
-        }
-
         self.running_sum += time;
         if self.valid == AVERAGE_WINDOW {
             self.running_sum -= self.times[self.time_index];
+        }
+
+        self.times[self.time_index] = time;
+        self.time_index = (self.time_index + 1) % AVERAGE_WINDOW;
+
+        if self.valid < AVERAGE_WINDOW {
+            self.valid += 1;
         }
     }
 
