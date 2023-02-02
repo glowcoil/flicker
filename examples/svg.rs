@@ -7,7 +7,7 @@ use portlight::{Application, MouseButton, Point, Rect, Window, WindowHandler, Wi
 const WIDTH: usize = 1024;
 const HEIGHT: usize = 1024;
 
-const AVERAGE_WINDOW: usize = 64;
+const AVERAGE_WINDOW: usize = 32;
 
 struct FrameTimer {
     times: Vec<Duration>,
