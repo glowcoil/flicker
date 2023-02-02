@@ -1,5 +1,5 @@
 use crate::color::Color;
-use crate::geom::Vec2;
+use crate::geom::{Transform, Vec2};
 use crate::path::{Command, Path};
 use crate::raster::{Rasterizer, Segment};
 use crate::text::Font;
@@ -56,12 +56,12 @@ impl Canvas {
         self.segments.clear();
     }
 
-    pub fn fill_path(&mut self, path: &Path, color: Color) {
+    pub fn fill_path(&mut self, path: &Path, transform: &Transform, color: Color) {
         if path.is_empty() {
             return;
         }
 
-        let (min, max) = path.bounds();
+        let (min, max) = path.bounds(transform);
 
         let min_x = (min.x as isize).max(0).min(self.width as isize) as usize;
         let min_y = (min.y as isize).max(0).min(self.width as isize) as usize;
@@ -82,7 +82,7 @@ impl Canvas {
         let mut first = Vec2::new(0.0, 0.0);
         let mut last = Vec2::new(0.0, 0.0);
 
-        path.flatten(|command| match command {
+        path.flatten(transform, |command| match command {
             Command::Move(point) => {
                 first = point;
                 last = point;
@@ -110,11 +110,18 @@ impl Canvas {
             .finish(color, &mut self.data[data_start..], self.width);
     }
 
-    pub fn stroke_path(&mut self, path: &Path, width: f32, color: Color) {
-        self.fill_path(&path.stroke(width), color);
+    pub fn stroke_path(&mut self, path: &Path, width: f32, transform: &Transform, color: Color) {
+        self.fill_path(&path.stroke(width, transform), &Transform::id(), color);
     }
 
-    pub fn fill_text(&mut self, text: &str, font: &Font, size: f32, color: Color) {
+    pub fn fill_text(
+        &mut self,
+        text: &str,
+        font: &Font,
+        size: f32,
+        transform: &Transform,
+        color: Color,
+    ) {
         use swash::scale::*;
         use swash::shape::*;
         use zeno::*;
@@ -167,7 +174,7 @@ impl Canvas {
                         }
                     }
 
-                    self.fill_path(&path, color);
+                    self.fill_path(&path, transform, color);
 
                     offset += glyph.advance;
                 }

@@ -41,16 +41,18 @@ impl Path {
     }
 
     #[inline]
-    pub fn bounds(&self) -> (Vec2, Vec2) {
+    pub fn bounds(&self, transform: &Transform) -> (Vec2, Vec2) {
         if self.is_empty() {
             return (Vec2::new(0.0, 0.0), Vec2::new(0.0, 0.0));
         }
 
-        let mut min = *self.points.first().unwrap();
-        let mut max = *self.points.first().unwrap();
-        for &point in self.points.iter() {
-            min = min.min(point);
-            max = max.max(point);
+        let first = transform.apply(*self.points.first().unwrap());
+        let mut min = first;
+        let mut max = first;
+        for &point in self.points[1..].iter() {
+            let transformed = transform.apply(point);
+            min = min.min(transformed);
+            max = max.max(transformed);
         }
 
         (min, max)
@@ -157,24 +159,24 @@ impl Path {
     }
 
     #[inline]
-    pub(crate) fn flatten(&self, mut sink: impl FnMut(Command)) {
+    pub(crate) fn flatten(&self, transform: &Transform, mut sink: impl FnMut(Command)) {
         let mut last = Vec2::new(0.0, 0.0);
         let mut points = self.points.iter();
         for verb in self.verbs.iter() {
             match *verb {
                 Verb::Move => {
-                    let point = *points.next().unwrap();
+                    let point = transform.apply(*points.next().unwrap());
                     sink(Command::Move(point));
                     last = point;
                 }
                 Verb::Line => {
-                    let point = *points.next().unwrap();
+                    let point = transform.apply(*points.next().unwrap());
                     sink(Command::Line(point));
                     last = point;
                 }
                 Verb::Quadratic => {
-                    let control = *points.next().unwrap();
-                    let point = *points.next().unwrap();
+                    let control = transform.apply(*points.next().unwrap());
+                    let point = transform.apply(*points.next().unwrap());
                     let dt = ((4.0 * TOLERANCE) / (last - 2.0 * control + point).length()).sqrt();
                     let mut t = 0.0;
                     while t < 1.0 {
@@ -186,9 +188,9 @@ impl Path {
                     last = point;
                 }
                 Verb::Cubic => {
-                    let control1 = *points.next().unwrap();
-                    let control2 = *points.next().unwrap();
-                    let point = *points.next().unwrap();
+                    let control1 = transform.apply(*points.next().unwrap());
+                    let control2 = transform.apply(*points.next().unwrap());
+                    let point = transform.apply(*points.next().unwrap());
                     let a = -1.0 * last + 3.0 * control1 - 3.0 * control2 + point;
                     let b = 3.0 * (last - 2.0 * control1 + control2);
                     let conc = b.length().max((a + b).length());
@@ -213,7 +215,7 @@ impl Path {
     }
 
     #[inline]
-    pub(crate) fn stroke(&self, width: f32) -> Path {
+    pub(crate) fn stroke(&self, width: f32, transform: &Transform) -> Path {
         #[inline]
         fn join(path: &mut Path, width: f32, prev_normal: Vec2, next_normal: Vec2, point: Vec2) {
             let offset = 1.0 / (1.0 + prev_normal.dot(next_normal));
@@ -270,7 +272,11 @@ impl Path {
         }
 
         let mut flattened = Path::new();
-        self.flatten(|command| flattened.push(command));
+        self.flatten(transform, |command| flattened.push(command));
+
+        // This is only valid for isotropic transforms.
+        // FIXME: Handle arbitrary transforms properly.
+        let width = transform.matrix.determinant().abs().sqrt() * width;
 
         let mut path = Path::new();
 

@@ -2,6 +2,9 @@ use criterion::{criterion_group, criterion_main, Criterion};
 
 use flicker::{Canvas, Color, Mat2x2, Path, Transform, Vec2};
 
+const WIDTH: usize = 1024;
+const HEIGHT: usize = 1024;
+
 enum Style {
     Fill,
     Stroke(f32),
@@ -24,23 +27,16 @@ fn load_tiger() -> Vec<Command> {
                 let transform = Transform::new(
                     Mat2x2::new(t.a as f32, t.c as f32, t.b as f32, t.d as f32),
                     Vec2::new(t.e as f32, t.f as f32),
-                )
-                .then(Transform::scale(2.0));
+                );
 
                 let mut path = Path::new();
                 for segment in p.data.0.iter() {
                     match *segment {
                         usvg::PathSegment::MoveTo { x, y } => {
-                            path.move_to(
-                                Vec2::new(0.0, 0.0)
-                                    + transform.apply(1.0 * Vec2::new(x as f32, y as f32)),
-                            );
+                            path.move_to(transform.apply(Vec2::new(x as f32, y as f32)));
                         }
                         usvg::PathSegment::LineTo { x, y } => {
-                            path.line_to(
-                                Vec2::new(0.0, 0.0)
-                                    + transform.apply(1.0 * Vec2::new(x as f32, y as f32)),
-                            );
+                            path.line_to(transform.apply(Vec2::new(x as f32, y as f32)));
                         }
                         usvg::PathSegment::CurveTo {
                             x1,
@@ -51,12 +47,9 @@ fn load_tiger() -> Vec<Command> {
                             y,
                         } => {
                             path.cubic_to(
-                                Vec2::new(0.0, 0.0)
-                                    + transform.apply(1.0 * Vec2::new(x1 as f32, y1 as f32)),
-                                Vec2::new(0.0, 0.0)
-                                    + transform.apply(1.0 * Vec2::new(x2 as f32, y2 as f32)),
-                                Vec2::new(0.0, 0.0)
-                                    + transform.apply(1.0 * Vec2::new(x as f32, y as f32)),
+                                transform.apply(Vec2::new(x1 as f32, y1 as f32)),
+                                transform.apply(Vec2::new(x2 as f32, y2 as f32)),
+                                transform.apply(Vec2::new(x as f32, y as f32)),
                             );
                         }
                         usvg::PathSegment::ClosePath => {
@@ -83,7 +76,7 @@ fn load_tiger() -> Vec<Command> {
                             Color::rgba(color.red, color.green, color.blue, stroke.opacity.to_u8());
                         commands.push(Command {
                             path,
-                            style: Style::Stroke(2.0 * stroke.width.value() as f32),
+                            style: Style::Stroke(stroke.width.value() as f32),
                             color,
                         });
                     }
@@ -107,17 +100,17 @@ fn render(commands: &[Command], canvas: &mut Canvas) {
     for command in commands {
         match command.style {
             Style::Fill => {
-                canvas.fill_path(&command.path, command.color);
+                canvas.fill_path(&command.path, &Transform::scale(2.0), command.color);
             }
             Style::Stroke(width) => {
-                canvas.stroke_path(&command.path, width, command.color);
+                canvas.stroke_path(&command.path, width, &Transform::scale(2.0), command.color);
             }
         }
     }
 }
 
 pub fn criterion_benchmark(c: &mut Criterion) {
-    let mut canvas = Canvas::with_size(1024, 1024);
+    let mut canvas = Canvas::with_size(WIDTH, HEIGHT);
 
     let commands = load_tiger();
 

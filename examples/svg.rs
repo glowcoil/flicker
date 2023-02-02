@@ -4,8 +4,8 @@ use std::time::Duration;
 use flicker::{Canvas, Color, Font, Mat2x2, Path, Transform, Vec2};
 use portlight::{Application, Rect, Window, WindowHandler, WindowOptions};
 
-const WIDTH: usize = 768;
-const HEIGHT: usize = 768;
+const WIDTH: usize = 1024;
+const HEIGHT: usize = 1024;
 
 enum Style {
     Fill,
@@ -32,10 +32,10 @@ fn build_list(node: &usvg::Node, commands: &mut Vec<Command>) {
             for segment in p.data.0.iter() {
                 match *segment {
                     usvg::PathSegment::MoveTo { x, y } => {
-                        path.move_to(transform.apply(1.0 * Vec2::new(x as f32, y as f32)));
+                        path.move_to(transform.apply(Vec2::new(x as f32, y as f32)));
                     }
                     usvg::PathSegment::LineTo { x, y } => {
-                        path.line_to(transform.apply(1.0 * Vec2::new(x as f32, y as f32)));
+                        path.line_to(transform.apply(Vec2::new(x as f32, y as f32)));
                     }
                     usvg::PathSegment::CurveTo {
                         x1,
@@ -46,9 +46,9 @@ fn build_list(node: &usvg::Node, commands: &mut Vec<Command>) {
                         y,
                     } => {
                         path.cubic_to(
-                            transform.apply(1.0 * Vec2::new(x1 as f32, y1 as f32)),
-                            transform.apply(1.0 * Vec2::new(x2 as f32, y2 as f32)),
-                            transform.apply(1.0 * Vec2::new(x as f32, y as f32)),
+                            transform.apply(Vec2::new(x1 as f32, y1 as f32)),
+                            transform.apply(Vec2::new(x2 as f32, y2 as f32)),
+                            transform.apply(Vec2::new(x as f32, y as f32)),
                         );
                     }
                     usvg::PathSegment::ClosePath => {
@@ -93,10 +93,10 @@ fn render(commands: &[Command], canvas: &mut Canvas) {
     for command in commands {
         match command.style {
             Style::Fill => {
-                canvas.fill_path(&command.path, command.color);
+                canvas.fill_path(&command.path, &Transform::scale(2.0), command.color);
             }
             Style::Stroke(width) => {
-                canvas.stroke_path(&command.path, width, command.color);
+                canvas.stroke_path(&command.path, width, &Transform::scale(2.0), command.color);
             }
         }
     }
@@ -178,6 +178,7 @@ impl WindowHandler for Handler {
             &format!("{:#.3?}", self.timer.borrow().average()),
             &self.font,
             24.0,
+            &Transform::id(),
             Color::rgba(0, 0, 0, 255),
         );
 
