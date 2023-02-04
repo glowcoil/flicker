@@ -43,11 +43,24 @@ impl Methods {
             }
         }
 
+        #[cfg(target_arch = "x86_64")]
         if let Some(methods) = Avx2::try_with(Specialize) {
             methods
         } else {
             Sse2::with(Specialize)
         }
+
+        #[cfg(target_arch = "x86")]
+        if let Some(methods) = Avx2::try_with(Specialize) {
+            methods
+        } else if let Some(methods) = Sse2::try_with(specialize) {
+            methods
+        } else {
+            Scalar::with(Specialize)
+        }
+
+        #[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
+        Scalar::with(Specialize)
     }
 }
 
