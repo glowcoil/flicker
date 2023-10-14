@@ -217,6 +217,12 @@ mod tests {
                         "expected {a}.abs() == {correct}, got {b}"
                     );
                 }
+
+                let result = A::u32::from(A::f32::load(chunk));
+                for (&a, &b) in chunk.iter().zip(result.as_slice().iter()) {
+                    let correct = a as u32;
+                    assert!(correct == b, "expected {a} as u32 == {correct}, got {b}");
+                }
             }
 
             // Test for scan_sum. Since different backends use different reduction trees, we can't
@@ -334,6 +340,12 @@ mod tests {
                     correct == result,
                     "expected {chunk:?}.last() == {correct}, got {result}"
                 );
+
+                let result = A::f32::from(A::u32::load(chunk));
+                for (&a, &b) in chunk.iter().zip(result.as_slice().iter()) {
+                    let correct = a as f32;
+                    assert!(correct == b, "expected {a} as f32 == {correct}, got {b}");
+                }
             }
 
             for lanes in 0..A::u32::LANES {
