@@ -59,7 +59,14 @@ impl Methods {
             Scalar::with(Specialize)
         }
 
-        #[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
+        #[cfg(target_arch = "aarch64")]
+        if let Some(methods) = Neon::try_with(Specialize) {
+            methods
+        } else {
+            Scalar::with(Specialize)
+        }
+
+        #[cfg(not(any(target_arch = "x86", target_arch = "x86_64", target_arch = "aarch64")))]
         Scalar::with(Specialize)
     }
 }

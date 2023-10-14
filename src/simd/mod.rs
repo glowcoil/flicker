@@ -5,6 +5,9 @@ mod avx2;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 mod sse2;
 
+#[cfg(target_arch = "aarch64")]
+mod neon;
+
 use std::fmt::Debug;
 use std::ops::*;
 
@@ -24,6 +27,9 @@ pub use scalar::Scalar;
 pub use avx2::*;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 pub use sse2::*;
+
+#[cfg(target_arch = "aarch64")]
+pub use neon::*;
 
 #[allow(non_camel_case_types)]
 pub trait Arch {
@@ -278,6 +284,12 @@ mod tests {
         Avx2::try_with(TestF32);
     }
 
+    #[cfg(target_arch = "aarch64")]
+    #[test]
+    fn neon_f32() {
+        Neon::try_with(TestF32);
+    }
+
     struct TestU32;
 
     impl WithArch for TestU32 {
@@ -377,5 +389,11 @@ mod tests {
     #[test]
     fn avx2_u32() {
         Avx2::try_with(TestU32);
+    }
+
+    #[cfg(target_arch = "aarch64")]
+    #[test]
+    fn neon_u32() {
+        Neon::try_with(TestU32);
     }
 }
