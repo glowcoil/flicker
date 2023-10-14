@@ -62,7 +62,7 @@ where
 {
     fn abs(self) -> Self;
     fn min(self, rhs: Self) -> Self;
-    fn scan_sum(self) -> Self;
+    fn prefix_sum(self) -> Self;
 }
 
 pub trait Int: Sized
@@ -225,14 +225,14 @@ mod tests {
                 }
             }
 
-            // Test for scan_sum. Since different backends use different reduction trees, we can't
+            // Test for prefix_sum. Since different backends use different reduction trees, we can't
             // expect bit equality in the face of rounding or edge cases like NaN or infinity, so
             // just test on exactly representable integers for now.
 
             let values = (0..64).map(|x| x as f32).collect::<Vec<f32>>();
 
             for chunk in values.chunks(A::f32::LANES) {
-                let result = A::f32::load(chunk).scan_sum();
+                let result = A::f32::load(chunk).prefix_sum();
                 let mut correct = A::f32::load(chunk);
                 let mut accum = 0.0;
                 for x in correct.as_mut_slice() {
@@ -244,7 +244,7 @@ mod tests {
                     .iter()
                     .zip(correct.as_slice().iter())
                     .all(|(a, b)| a == b);
-                assert!(equal, "scan_sum() failed\n   input: {chunk:?}\nexpected: {correct:?}\n     got: {result:?}");
+                assert!(equal, "prefix_sum() failed\n   input: {chunk:?}\nexpected: {correct:?}\n     got: {result:?}");
             }
 
             for lanes in 0..A::f32::LANES {

@@ -375,7 +375,7 @@ impl Rasterizer {
                             (&mut coverage_chunks).zip(&mut pixels_chunks)
                         {
                             let deltas = A::f32::load(coverage_chunk);
-                            let accums = A::f32::from(accum) + deltas.scan_sum();
+                            let accums = A::f32::from(accum) + deltas.prefix_sum();
                             accum = accums.last();
                             let mask = accums.abs().min(A::f32::from(1.0));
                             coverage = mask.last();
@@ -390,7 +390,7 @@ impl Rasterizer {
                         let pixels_remainder = pixels_chunks.into_remainder();
                         if !pixels_remainder.is_empty() && !coverage_remainder.is_empty() {
                             let deltas = A::f32::load_partial(coverage_remainder);
-                            let accums = A::f32::from(accum) + deltas.scan_sum();
+                            let accums = A::f32::from(accum) + deltas.prefix_sum();
                             accum = accums.last();
                             let mask = accums.abs().min(A::f32::from(1.0));
                             coverage = mask.last();

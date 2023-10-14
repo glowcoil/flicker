@@ -111,7 +111,7 @@ impl Float for f32x1 {
     }
 
     #[inline]
-    fn scan_sum(self) -> Self {
+    fn prefix_sum(self) -> Self {
         self
     }
 }

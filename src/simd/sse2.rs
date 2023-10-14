@@ -181,7 +181,7 @@ impl Float for f32x4 {
     }
 
     #[inline(always)]
-    fn scan_sum(self) -> Self {
+    fn prefix_sum(self) -> Self {
         #[inline]
         #[target_feature(enable = "sse2")]
         unsafe fn inner(value: f32x4) -> f32x4 {
