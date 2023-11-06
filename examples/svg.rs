@@ -2,8 +2,7 @@ use std::time::Duration;
 
 use flicker::{Canvas, Color, Font, Transform, Vec2};
 use portlight::{
-    AppContext, AppOptions, Bitmap, Event, MouseButton, Point, Response, Size, Window,
-    WindowOptions,
+    App, Bitmap, Event, MouseButton, Point, Response, Size, WindowContext, WindowOptions,
 };
 
 const WIDTH: usize = 512;
@@ -48,64 +47,62 @@ impl FrameTimer {
 }
 
 struct State {
-    scale: f64,
-    canvas: Canvas,
+    canvas: Option<Canvas>,
     font: Font,
     commands: Vec<svg::Command>,
     timer: FrameTimer,
     mouse_pos: Point,
     dragging: bool,
     transform: Transform,
-    window: Window,
 }
 
 impl State {
-    fn new(commands: Vec<svg::Command>, window: Window) -> State {
-        let scale = window.scale();
-        let width = WIDTH as f64 * scale;
-        let height = HEIGHT as f64 * scale;
-
+    fn new(commands: Vec<svg::Command>) -> State {
         State {
-            scale,
-            canvas: Canvas::with_size(width as usize, height as usize),
+            canvas: None,
             font: Font::from_bytes(include_bytes!("res/SourceSansPro-Regular.otf"), 0).unwrap(),
             commands,
             timer: FrameTimer::new(),
             mouse_pos: Point { x: -1.0, y: -1.0 },
             dragging: false,
             transform: Transform::id(),
-            window,
         }
     }
 
-    fn handle_event(&mut self, cx: &AppContext<Self>, event: Event) -> Response {
+    fn handle_event(&mut self, cx: &WindowContext, event: Event) -> Response {
         match event {
             Event::Frame => {
-                self.canvas.clear(Color::rgba(255, 255, 255, 255));
+                let scale = cx.window().scale();
+                let width = WIDTH as f64 * scale;
+                let height = HEIGHT as f64 * scale;
+
+                if self.canvas.is_none() {
+                    self.canvas = Some(Canvas::with_size(width as usize, height as usize));
+                }
+                let canvas = self.canvas.as_mut().unwrap();
+
+                canvas.clear(Color::rgba(255, 255, 255, 255));
 
                 let time = std::time::Instant::now();
                 svg::render(
                     &self.commands,
-                    &self.transform.then(Transform::scale(self.scale as f32)),
-                    &mut self.canvas,
+                    &self.transform.then(Transform::scale(scale as f32)),
+                    canvas,
                 );
                 let elapsed = time.elapsed();
 
                 self.timer.update(elapsed);
 
-                self.canvas.fill_text(
+                canvas.fill_text(
                     &format!("{:#.3?}", self.timer.average()),
                     &self.font,
                     24.0,
-                    &Transform::scale(self.scale as f32),
+                    &Transform::scale(scale as f32),
                     Color::rgba(0, 0, 0, 255),
                 );
 
-                self.window.present(Bitmap::new(
-                    self.canvas.data(),
-                    self.canvas.width(),
-                    self.canvas.height(),
-                ));
+                cx.window()
+                    .present(Bitmap::new(canvas.data(), canvas.width(), canvas.height()));
             }
             Event::MouseMove(pos) => {
                 if self.dragging {
@@ -148,7 +145,7 @@ impl State {
                 return Response::Capture;
             }
             Event::Close => {
-                cx.exit();
+                cx.app().exit();
             }
             _ => {}
         }
@@ -165,25 +162,17 @@ fn main() {
         .unwrap_or("examples/res/tiger.svg");
     let commands = svg::from_file(path).unwrap();
 
-    let mut app = AppOptions::new()
-        .build(|cx| {
-            let window = WindowOptions::new()
-                .title("flicker")
-                .size(Size::new(WIDTH as f64, HEIGHT as f64))
-                .open(cx, State::handle_event)
-                .unwrap();
+    let app = App::new().unwrap();
 
-            let scale = window.scale();
-            let width = (WIDTH as f64 * scale) as usize;
-            let height = (HEIGHT as f64 * scale) as usize;
-            let framebuffer = vec![0xFFFF00FF; width * height];
-            window.present(Bitmap::new(&framebuffer, width, height));
+    let mut state = State::new(commands);
 
-            window.show();
-
-            Ok(State::new(commands, window))
-        })
+    let window = WindowOptions::new()
+        .title("flicker")
+        .size(Size::new(WIDTH as f64, HEIGHT as f64))
+        .open(app.handle(), move |cx, event| state.handle_event(cx, event))
         .unwrap();
+
+    window.show();
 
     app.run().unwrap();
 }
