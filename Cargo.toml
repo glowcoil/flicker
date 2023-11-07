@@ -12,7 +12,7 @@ zeno = "0.2.2"
 [dev-dependencies]
 svg = { path = "svg" }
 criterion = { version = "0.3", features = ["html_reports"] }
-portlight = { git = "https://github.com/coupler-rs/portlight", rev = "163e80b1128d9def381c2fc223558c1621fadd05" }
+portlight = { git = "https://github.com/coupler-rs/portlight", rev = "e91491bd705091cadde4acf8236c384670ab92e6" }
 
 [[bench]]
 name = "tiger"
