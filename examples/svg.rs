@@ -130,16 +130,20 @@ impl State {
                 return Response::Capture;
             }
             Event::Scroll(delta) => {
+                let scale = cx.window().scale() as f32;
+                let width = WIDTH as f32 * scale;
+                let height = HEIGHT as f32 * scale;
+
                 self.transform = self
                     .transform
                     .then(Transform::translate(
-                        -self.mouse_pos.x as f32,
-                        -self.mouse_pos.y as f32,
+                        -0.5 * width,
+                        -0.5 * height,
                     ))
                     .then(Transform::scale(1.02f32.powf(delta.y as f32)))
                     .then(Transform::translate(
-                        self.mouse_pos.x as f32,
-                        self.mouse_pos.y as f32,
+                        0.5 * width,
+                        0.5 * height,
                     ));
 
                 return Response::Capture;
