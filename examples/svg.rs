@@ -71,12 +71,19 @@ impl State {
 
     fn handle_event(&mut self, cx: &WindowContext, event: Event) -> Response {
         match event {
-            Event::Frame => {
+            Event::Frame | Event::Expose(..) => {
                 let scale = cx.window().scale();
-                let width = WIDTH as f64 * scale;
-                let height = HEIGHT as f64 * scale;
+                let size = cx.window().size().scale(scale);
+                let width = size.width;
+                let height = size.height;
 
-                if self.canvas.is_none() {
+                let rebuild = if let Some(canvas) = &self.canvas {
+                    width as usize != canvas.width() || height as usize != canvas.height()
+                } else {
+                    true
+                };
+
+                if rebuild {
                     self.canvas = Some(Canvas::with_size(width as usize, height as usize));
                 }
                 let canvas = self.canvas.as_mut().unwrap();
@@ -130,9 +137,10 @@ impl State {
                 return Response::Capture;
             }
             Event::Scroll(delta) => {
-                let scale = cx.window().scale() as f32;
-                let width = WIDTH as f32 * scale;
-                let height = HEIGHT as f32 * scale;
+                let scale = cx.window().scale();
+                let size = cx.window().size().scale(scale);
+                let width = size.width as f32;
+                let height = size.height as f32;
 
                 self.transform = self
                     .transform
