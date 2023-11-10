@@ -131,11 +131,11 @@ impl Rasterizer {
 
         let sign = (p2.y - p1.y).signum();
 
-        let mut x = p_left.x as usize;
-        let mut y = p_left.y as usize;
+        let mut x = p_left.x as isize;
+        let mut y = p_left.y as isize;
 
-        let x_end = p_right.x as usize;
-        let y_end = p_right.y as usize;
+        let x_end = p_right.x as isize;
+        let y_end = p_right.y as isize;
 
         let dx = p_right.x - p_left.x;
         let mut x_offset = p_left.x - x as f32;
@@ -163,15 +163,15 @@ impl Rasterizer {
         let mut x_offset_next = x_offset + dxdy * (1.0 - y_offset);
         let mut y_offset_next = y_offset + dydx * (1.0 - x_offset);
 
-        let mut row_start = x;
+        let mut row_start = x as usize;
         let mut carry = 0.0;
         loop {
             if y == y_end && x == x_end {
                 let height = sign * (y_offset_end - y_offset);
                 let area = 0.5 * height * (2.0 - x_offset - x_offset_end);
-                self.coverage[y * self.width + x_end] += carry + area;
-                self.coverage[y * self.width + x_end + 1] += height - area;
-                self.fill_cells::<A>(y_end as usize, row_start, x + 2);
+                self.coverage[y as usize * self.width + x_end as usize] += carry + area;
+                self.coverage[y as usize * self.width + x_end as usize + 1] += height - area;
+                self.fill_cells::<A>(y_end as usize, row_start, x_end as usize + 2);
 
                 break;
             }
@@ -179,18 +179,18 @@ impl Rasterizer {
             if y_offset_next > 1.0 {
                 let height = sign * (1.0 - y_offset);
                 let area = 0.5 * height * (2.0 - x_offset - x_offset_next);
-                self.coverage[y * self.width + x] += carry + area;
-                self.coverage[y * self.width + x + 1] += height - area;
-                self.fill_cells::<A>(y as usize, row_start, x + 2);
+                self.coverage[y as usize * self.width + x as usize] += carry + area;
+                self.coverage[y as usize * self.width + x as usize + 1] += height - area;
+                self.fill_cells::<A>(y as usize, row_start, x as usize + 2);
 
                 x_offset = x_offset_next;
                 x_offset_next += dxdy;
 
-                y = (y as isize + y_inc) as usize;
+                y += y_inc;
                 y_offset = 0.0;
                 y_offset_next -= 1.0;
 
-                row_start = x;
+                row_start = x as usize;
                 carry = 0.0;
 
                 continue;
@@ -198,7 +198,7 @@ impl Rasterizer {
 
             let height = sign * (y_offset_next - y_offset);
             let area = 0.5 * height * (1.0 - x_offset);
-            self.coverage[y * self.width + x] += carry + area;
+            self.coverage[y as usize * self.width + x as usize] += carry + area;
             carry = height - area;
 
             x += 1;
