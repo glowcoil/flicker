@@ -113,113 +113,101 @@ impl Rasterizer {
     }
 
     fn add_segments_inner<A: Arch>(&mut self, segments: &[Segment]) {
-        invoke!(A, {
-            for Segment { p1, p2 } in segments {
-                let p_left;
-                let p_right;
-                if p1.x < p2.x {
-                    p_left = *p1;
-                    p_right = *p2;
-                } else {
-                    p_left = *p2;
-                    p_right = *p1;
-                }
+        for segment in segments {
+            self.add_segment::<A>(segment.p1, segment.p2);
+        }
+    }
 
-                let sign = (p2.y - p1.y).signum();
+    fn add_segment<A: Arch>(&mut self, p1: Vec2, p2: Vec2) {
+        let p_left;
+        let p_right;
+        if p1.x < p2.x {
+            p_left = p1;
+            p_right = p2;
+        } else {
+            p_left = p2;
+            p_right = p1;
+        }
 
-                let mut x = p_left.x as usize;
-                let mut y = p_left.y as usize;
+        let sign = (p2.y - p1.y).signum();
 
-                let x_end = p_right.x as usize;
-                let y_end = p_right.y as usize;
+        let mut x = p_left.x as usize;
+        let mut y = p_left.y as usize;
 
-                let dx = p_right.x - p_left.x;
-                let mut x_offset = p_left.x - x as f32;
-                let x_offset_end = p_right.x - x_end as f32;
+        let x_end = p_right.x as usize;
+        let y_end = p_right.y as usize;
 
-                let y_inc;
-                let mut y_offset;
-                let y_offset_end;
-                let dy;
-                if p_left.y < p_right.y {
-                    y_inc = 1;
-                    y_offset = p_left.y - y as f32;
-                    y_offset_end = p_right.y - y_end as f32;
-                    dy = p_right.y - p_left.y;
-                } else {
-                    y_inc = -1;
-                    y_offset = 1.0 - (p_left.y - y as f32);
-                    y_offset_end = 1.0 - (p_right.y - y_end as f32);
-                    dy = p_left.y - p_right.y;
-                }
+        let dx = p_right.x - p_left.x;
+        let mut x_offset = p_left.x - x as f32;
+        let x_offset_end = p_right.x - x_end as f32;
 
-                let dxdy = dx / dy;
-                let dydx = dy / dx;
+        let y_inc;
+        let mut y_offset;
+        let y_offset_end;
+        let dy;
+        if p_left.y < p_right.y {
+            y_inc = 1;
+            y_offset = p_left.y - y as f32;
+            y_offset_end = p_right.y - y_end as f32;
+            dy = p_right.y - p_left.y;
+        } else {
+            y_inc = -1;
+            y_offset = 1.0 - (p_left.y - y as f32);
+            y_offset_end = 1.0 - (p_right.y - y_end as f32);
+            dy = p_left.y - p_right.y;
+        }
 
-                let mut x_offset_next = x_offset + dxdy * (1.0 - y_offset);
-                let mut y_offset_next = y_offset + dydx * (1.0 - x_offset);
+        let dxdy = dx / dy;
+        let dydx = dy / dx;
 
-                while y != y_end {
-                    let x_start = x;
+        let mut x_offset_next = x_offset + dxdy * (1.0 - y_offset);
+        let mut y_offset_next = y_offset + dydx * (1.0 - x_offset);
 
-                    let row_offset = y * self.width;
-
-                    let mut carry = 0.0;
-
-                    while y_offset_next < 1.0 {
-                        let height = sign * (y_offset_next - y_offset);
-                        let area = 0.5 * height * (1.0 - x_offset);
-                        self.coverage[row_offset + x] += carry + area;
-                        carry = height - area;
-
-                        x += 1;
-                        x_offset = 0.0;
-                        x_offset_next -= 1.0;
-
-                        y_offset = y_offset_next;
-                        y_offset_next += dydx;
-                    }
-
-                    let height = sign * (1.0 - y_offset);
-                    let area = 0.5 * height * (2.0 - x_offset - x_offset_next);
-                    self.coverage[row_offset + x] += carry + area;
-                    self.coverage[row_offset + x + 1] += height - area;
-                    self.fill_cells::<A>(y as usize, x_start, x + 2);
-
-                    x_offset = x_offset_next;
-                    x_offset_next += dxdy;
-
-                    y = (y as isize + y_inc) as usize;
-                    y_offset = 0.0;
-                    y_offset_next -= 1.0;
-                }
-
-                let x_start = x;
-
-                let row_offset = y_end * self.width;
-
-                let mut carry = 0.0;
-
-                while x != x_end {
-                    let height = sign * (y_offset_next - y_offset);
-                    let area = 0.5 * height * (1.0 - x_offset);
-                    self.coverage[row_offset + x] += carry + area;
-                    carry = height - area;
-
-                    x += 1;
-                    x_offset = 0.0;
-
-                    y_offset = y_offset_next;
-                    y_offset_next += dydx;
-                }
-
+        let mut row_start = x;
+        let mut carry = 0.0;
+        loop {
+            if y == y_end && x == x_end {
                 let height = sign * (y_offset_end - y_offset);
                 let area = 0.5 * height * (2.0 - x_offset - x_offset_end);
-                self.coverage[row_offset + x_end] += carry + area;
-                self.coverage[row_offset + x_end + 1] += height - area;
-                self.fill_cells::<A>(y_end as usize, x_start, x + 2);
+                self.coverage[y * self.width + x_end] += carry + area;
+                self.coverage[y * self.width + x_end + 1] += height - area;
+                self.fill_cells::<A>(y_end as usize, row_start, x + 2);
+
+                break;
             }
-        })
+
+            if y_offset_next > 1.0 {
+                let height = sign * (1.0 - y_offset);
+                let area = 0.5 * height * (2.0 - x_offset - x_offset_next);
+                self.coverage[y * self.width + x] += carry + area;
+                self.coverage[y * self.width + x + 1] += height - area;
+                self.fill_cells::<A>(y as usize, row_start, x + 2);
+
+                x_offset = x_offset_next;
+                x_offset_next += dxdy;
+
+                y = (y as isize + y_inc) as usize;
+                y_offset = 0.0;
+                y_offset_next -= 1.0;
+
+                row_start = x;
+                carry = 0.0;
+
+                continue;
+            }
+
+            let height = sign * (y_offset_next - y_offset);
+            let area = 0.5 * height * (1.0 - x_offset);
+            self.coverage[y * self.width + x] += carry + area;
+            carry = height - area;
+
+            x += 1;
+            x_offset = 0.0;
+            x_offset_next -= 1.0;
+
+            y_offset = y_offset_next;
+            y_offset_next += dydx;
+        }
     }
 
     #[inline]
