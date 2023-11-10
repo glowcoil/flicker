@@ -13,6 +13,7 @@ struct Consts<A: Arch>(std::marker::PhantomData<A>);
 
 impl<A: Arch> Consts<A> {
     const BITS_PER_BITMASK: usize = u64::BITS as usize;
+    const BITS_PER_BITMASK_SHIFT: usize = Self::BITS_PER_BITMASK.trailing_zeros() as usize;
 
     const PIXELS_PER_BIT: usize = A::u32::LANES;
     const PIXELS_PER_BIT_SHIFT: usize = Self::PIXELS_PER_BIT.trailing_zeros() as usize;
@@ -114,154 +115,129 @@ impl Rasterizer {
     fn add_segments_inner<A: Arch>(&mut self, segments: &[Segment]) {
         invoke!(A, {
             for Segment { p1, p2 } in segments {
-                let mut x = (p1.x + 1.0) as isize - 1;
-                let mut y = (p1.y + 1.0) as isize - 1;
-
-                let x_end = (p2.x + 1.0) as isize - 1;
-                let y_end = (p2.y + 1.0) as isize - 1;
-
-                if (x >= self.width as isize && x_end >= self.width as isize)
-                    || (y >= self.height as isize && y_end >= self.height as isize)
-                    || (y < 0 && y_end < 0)
-                {
-                    continue;
-                }
-
-                if x == x_end && y == y_end {
-                    let height = p2.y - p1.y;
-                    let area = 0.5 * height * ((x as f32 + 1.0 - p1.x) + (x as f32 + 1.0 - p2.x));
-                    self.add_delta::<A>(x, y, height, area);
-                    continue;
-                }
-
-                let x_inc;
-                let mut x_offset;
-                let x_offset_end;
-                let dx;
-                let area_offset;
-                let area_sign;
-                if p2.x > p1.x {
-                    x_inc = 1;
-                    x_offset = p1.x - x as f32;
-                    x_offset_end = p2.x - x_end as f32;
-                    dx = p2.x - p1.x;
-                    area_offset = 2.0;
-                    area_sign = -1.0;
+                let p_left;
+                let p_right;
+                if p1.x < p2.x {
+                    p_left = *p1;
+                    p_right = *p2;
                 } else {
-                    x_inc = -1;
-                    x_offset = 1.0 - (p1.x - x as f32);
-                    x_offset_end = 1.0 - (p2.x - x_end as f32);
-                    dx = p1.x - p2.x;
-                    area_offset = 0.0;
-                    area_sign = 1.0;
+                    p_left = *p2;
+                    p_right = *p1;
                 }
+
+                let sign = (p2.y - p1.y).signum();
+
+                let mut x = p_left.x as usize;
+                let mut y = p_left.y as usize;
+
+                let x_end = p_right.x as usize;
+                let y_end = p_right.y as usize;
+
+                let dx = p_right.x - p_left.x;
+                let mut x_offset = p_left.x - x as f32;
+                let x_offset_end = p_right.x - x_end as f32;
 
                 let y_inc;
                 let mut y_offset;
                 let y_offset_end;
                 let dy;
-                let sign;
-                if p2.y > p1.y {
+                if p_left.y < p_right.y {
                     y_inc = 1;
-                    y_offset = p1.y - y as f32;
-                    y_offset_end = p2.y - y_end as f32;
-                    dy = p2.y - p1.y;
-                    sign = 1.0;
+                    y_offset = p_left.y - y as f32;
+                    y_offset_end = p_right.y - y_end as f32;
+                    dy = p_right.y - p_left.y;
                 } else {
                     y_inc = -1;
-                    y_offset = 1.0 - (p1.y - y as f32);
-                    y_offset_end = 1.0 - (p2.y - y_end as f32);
-                    dy = p1.y - p2.y;
-                    sign = -1.0;
+                    y_offset = 1.0 - (p_left.y - y as f32);
+                    y_offset_end = 1.0 - (p_right.y - y_end as f32);
+                    dy = p_left.y - p_right.y;
                 }
 
                 let dxdy = dx / dy;
                 let dydx = dy / dx;
 
-                let mut y_offset_for_prev_x = y_offset - dydx * x_offset;
-                let mut x_offset_for_prev_y = x_offset - dxdy * y_offset;
+                let mut x_offset_next = x_offset + dxdy * (1.0 - y_offset);
+                let mut y_offset_next = y_offset + dydx * (1.0 - x_offset);
 
-                while x != x_end || y != y_end {
-                    let col = x;
-                    let row = y;
+                while y != y_end {
+                    let x_start = x;
 
-                    let x1 = x_offset;
-                    let y1 = y_offset;
+                    let row_offset = y * self.width;
 
-                    let x2;
-                    let y2;
-                    if y != y_end && (x == x_end || x_offset_for_prev_y + dxdy < 1.0) {
-                        y_offset = 0.0;
-                        x_offset = x_offset_for_prev_y + dxdy;
-                        x_offset_for_prev_y = x_offset;
-                        y_offset_for_prev_x -= 1.0;
-                        y += y_inc;
+                    let mut carry = 0.0;
 
-                        x2 = x_offset;
-                        y2 = 1.0;
-                    } else {
+                    while y_offset_next < 1.0 {
+                        let height = sign * (y_offset_next - y_offset);
+                        let area = 0.5 * height * (1.0 - x_offset);
+                        self.coverage[row_offset + x] += carry + area;
+                        carry = height - area;
+
+                        x += 1;
                         x_offset = 0.0;
-                        y_offset = y_offset_for_prev_x + dydx;
-                        x_offset_for_prev_y -= 1.0;
-                        y_offset_for_prev_x = y_offset;
-                        x += x_inc;
+                        x_offset_next -= 1.0;
 
-                        x2 = 1.0;
-                        y2 = y_offset;
+                        y_offset = y_offset_next;
+                        y_offset_next += dydx;
                     }
 
-                    let height = sign * (y2 - y1);
-                    let area = 0.5 * height * (area_offset + area_sign * (x1 + x2));
+                    let height = sign * (1.0 - y_offset);
+                    let area = 0.5 * height * (2.0 - x_offset - x_offset_next);
+                    self.coverage[row_offset + x] += carry + area;
+                    self.coverage[row_offset + x + 1] += height - area;
+                    self.fill_cells::<A>(y as usize, x_start, x + 2);
 
-                    self.add_delta::<A>(col, row, height, area);
+                    x_offset = x_offset_next;
+                    x_offset_next += dxdy;
+
+                    y = (y as isize + y_inc) as usize;
+                    y_offset = 0.0;
+                    y_offset_next -= 1.0;
+                }
+
+                let x_start = x;
+
+                let row_offset = y_end * self.width;
+
+                let mut carry = 0.0;
+
+                while x != x_end {
+                    let height = sign * (y_offset_next - y_offset);
+                    let area = 0.5 * height * (1.0 - x_offset);
+                    self.coverage[row_offset + x] += carry + area;
+                    carry = height - area;
+
+                    x += 1;
+                    x_offset = 0.0;
+
+                    y_offset = y_offset_next;
+                    y_offset_next += dydx;
                 }
 
                 let height = sign * (y_offset_end - y_offset);
-                let area = 0.5 * height * (area_offset + area_sign * (x_offset + x_offset_end));
-
-                self.add_delta::<A>(x, y, height, area);
+                let area = 0.5 * height * (2.0 - x_offset - x_offset_end);
+                self.coverage[row_offset + x_end] += carry + area;
+                self.coverage[row_offset + x_end + 1] += height - area;
+                self.fill_cells::<A>(y_end as usize, x_start, x + 2);
             }
         })
     }
 
-    #[inline(always)]
-    fn mark_cell<A: Arch>(&mut self, x: usize, y: usize) {
-        let bitmask_index = y * self.bitmasks_width + (x >> Consts::<A>::PIXELS_PER_BITMASK_SHIFT);
-        let bit_index =
-            (x >> Consts::<A>::PIXELS_PER_BIT_SHIFT) & (Consts::<A>::BITS_PER_BITMASK - 1);
-        self.bitmasks[bitmask_index] |= 1 << bit_index;
-    }
+    #[inline]
+    fn fill_cells<A: Arch>(&mut self, y: usize, start: usize, end: usize) {
+        let offset = y * self.bitmasks_width;
 
-    #[inline(always)]
-    fn add_delta<A: Arch>(&mut self, x: isize, y: isize, height: f32, area: f32) {
-        if y < 0 || y >= self.height as isize || x >= self.width as isize {
-            return;
+        let cell_min = start >> Consts::<A>::PIXELS_PER_BIT_SHIFT;
+        let cell_max = (end + Consts::<A>::PIXELS_PER_BIT - 1) >> Consts::<A>::PIXELS_PER_BIT_SHIFT;
+        let bitmask_index_min = cell_min >> Consts::<A>::BITS_PER_BITMASK_SHIFT;
+        let bitmask_index_max = cell_max >> Consts::<A>::BITS_PER_BITMASK_SHIFT;
+
+        let mut bit_min = cell_min & (Consts::<A>::BITS_PER_BITMASK - 1);
+        for bitmask_index in bitmask_index_min..bitmask_index_max {
+            self.bitmasks[offset + bitmask_index] |= !0 << bit_min;
+            bit_min = 0;
         }
-
-        if x < 0 {
-            let coverage_index = y as usize * self.width;
-            self.coverage[coverage_index] += height;
-
-            self.mark_cell::<A>(0, y as usize);
-
-            return;
-        }
-
-        if x == self.width as isize - 1 {
-            let coverage_index = y as usize * self.width + x as usize;
-            self.coverage[coverage_index] += area;
-
-            self.mark_cell::<A>(x as usize, y as usize);
-
-            return;
-        }
-
-        let coverage_index = y as usize * self.width + x as usize;
-        self.coverage[coverage_index] += area;
-        self.coverage[coverage_index + 1] += height - area;
-
-        self.mark_cell::<A>(x as usize, y as usize);
-        self.mark_cell::<A>(x as usize + 1, y as usize);
+        let bit_max = cell_max & (Consts::<A>::BITS_PER_BITMASK - 1);
+        self.bitmasks[offset + bitmask_index_max] |= (!0 << bit_min) & !(!0 << bit_max);
     }
 
     pub fn finish(&mut self, color: Color, data: &mut [u32], stride: usize) {
