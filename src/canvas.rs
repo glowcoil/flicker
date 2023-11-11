@@ -79,9 +79,11 @@ impl Canvas {
 
         self.rasterizer.set_size(path_width, path_height);
 
-        path.flatten(transform, |p1, p2| {
-            self.add_segment(p1 - offset, p2 - offset);
-        });
+        for segment in path.segments() {
+            segment.flatten(transform, |p1, p2| {
+                self.add_segment(p1 - offset, p2 - offset);
+            });
+        }
 
         self.drain_segments();
 

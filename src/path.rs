@@ -161,65 +161,6 @@ impl Path {
     }
 
     #[inline]
-    pub(crate) fn flatten(&self, transform: &Transform, mut sink: impl FnMut(Vec2, Vec2)) {
-        for segment in self.segments() {
-            match segment {
-                Segment::Line(p1, p2) => {
-                    sink(transform.apply(p1), transform.apply(p2));
-                }
-                Segment::Quadratic(p1, p2, p3) => {
-                    let p1 = transform.apply(p1);
-                    let p2 = transform.apply(p2);
-                    let p3 = transform.apply(p3);
-
-                    let dt = ((4.0 * TOLERANCE) / (p1 - 2.0 * p2 + p3).length()).sqrt();
-
-                    let mut prev = p1;
-                    let mut t = 0.0;
-                    while t < 1.0 {
-                        t = (t + dt).min(1.0);
-
-                        let p01 = Vec2::lerp(t, p1, p2);
-                        let p12 = Vec2::lerp(t, p2, p3);
-                        let point = Vec2::lerp(t, p01, p12);
-
-                        sink(prev, point);
-                        prev = point;
-                    }
-                }
-                Segment::Cubic(p1, p2, p3, p4) => {
-                    let p1 = transform.apply(p1);
-                    let p2 = transform.apply(p2);
-                    let p3 = transform.apply(p3);
-                    let p4 = transform.apply(p4);
-
-                    let a = -1.0 * p1 + 3.0 * p2 - 3.0 * p3 + p4;
-                    let b = 3.0 * (p1 - 2.0 * p2 + p3);
-                    let conc = b.length().max((a + b).length());
-                    let dt = ((8.0f32.sqrt() * TOLERANCE) / conc).sqrt();
-
-                    let mut prev = p1;
-                    let mut t = 0.0;
-                    while t < 1.0 {
-                        t = (t + dt).min(1.0);
-
-                        let p01 = Vec2::lerp(t, p1, p2);
-                        let p12 = Vec2::lerp(t, p2, p3);
-                        let p23 = Vec2::lerp(t, p3, p4);
-                        let p012 = Vec2::lerp(t, p01, p12);
-                        let p123 = Vec2::lerp(t, p12, p23);
-
-                        let point = Vec2::lerp(t, p012, p123);
-
-                        sink(prev, point);
-                        prev = point;
-                    }
-                }
-            }
-        }
-    }
-
-    #[inline]
     pub fn segments(&self) -> Segments {
         Segments {
             first: Vec2::new(0.0, 0.0),
@@ -288,13 +229,15 @@ impl Path {
 
         let mut flattened = Path::new();
         let mut prev = Vec2::new(0.0, 0.0);
-        self.flatten(transform, |p1, p2| {
-            if prev != p1 {
-                flattened.push(Command::Move(p1));
-            }
-            flattened.push(Command::Line(p2));
-            prev = p2
-        });
+        for segment in self.segments() {
+            segment.flatten(transform, |p1, p2| {
+                if prev != p1 {
+                    flattened.push(Command::Move(p1));
+                }
+                flattened.push(Command::Line(p2));
+                prev = p2
+            });
+        }
 
         // This is only valid for isotropic transforms.
         // FIXME: Handle arbitrary transforms properly.
@@ -366,7 +309,64 @@ pub enum Segment {
     Cubic(Vec2, Vec2, Vec2, Vec2),
 }
 
-impl Segment {}
+impl Segment {
+    #[inline]
+    pub(crate) fn flatten(&self, transform: &Transform, mut sink: impl FnMut(Vec2, Vec2)) {
+        match *self {
+            Segment::Line(p1, p2) => {
+                sink(transform.apply(p1), transform.apply(p2));
+            }
+            Segment::Quadratic(p1, p2, p3) => {
+                let p1 = transform.apply(p1);
+                let p2 = transform.apply(p2);
+                let p3 = transform.apply(p3);
+
+                let dt = ((4.0 * TOLERANCE) / (p1 - 2.0 * p2 + p3).length()).sqrt();
+
+                let mut prev = p1;
+                let mut t = 0.0;
+                while t < 1.0 {
+                    t = (t + dt).min(1.0);
+
+                    let p01 = Vec2::lerp(t, p1, p2);
+                    let p12 = Vec2::lerp(t, p2, p3);
+                    let point = Vec2::lerp(t, p01, p12);
+
+                    sink(prev, point);
+                    prev = point;
+                }
+            }
+            Segment::Cubic(p1, p2, p3, p4) => {
+                let p1 = transform.apply(p1);
+                let p2 = transform.apply(p2);
+                let p3 = transform.apply(p3);
+                let p4 = transform.apply(p4);
+
+                let a = -1.0 * p1 + 3.0 * p2 - 3.0 * p3 + p4;
+                let b = 3.0 * (p1 - 2.0 * p2 + p3);
+                let conc = b.length().max((a + b).length());
+                let dt = ((8.0f32.sqrt() * TOLERANCE) / conc).sqrt();
+
+                let mut prev = p1;
+                let mut t = 0.0;
+                while t < 1.0 {
+                    t = (t + dt).min(1.0);
+
+                    let p01 = Vec2::lerp(t, p1, p2);
+                    let p12 = Vec2::lerp(t, p2, p3);
+                    let p23 = Vec2::lerp(t, p3, p4);
+                    let p012 = Vec2::lerp(t, p01, p12);
+                    let p123 = Vec2::lerp(t, p12, p23);
+
+                    let point = Vec2::lerp(t, p012, p123);
+
+                    sink(prev, point);
+                    prev = point;
+                }
+            }
+        }
+    }
+}
 
 pub struct Segments<'a> {
     first: Vec2,
