@@ -135,11 +135,11 @@ impl Rasterizer {
 
         let sign = (p2.y - p1.y).signum();
 
-        let mut x = p_left.x as isize;
-        let mut y = p_left.y as isize;
+        let mut x = p_left.x.floor() as isize;
+        let mut y = p_left.y.floor() as isize;
 
-        let x_end = p_right.x as isize;
-        let y_end = p_right.y as isize;
+        let x_end = p_right.x.floor() as isize;
+        let y_end = p_right.y.floor() as isize;
 
         let dx = p_right.x - p_left.x;
         let mut x_offset = p_left.x - x as f32;
