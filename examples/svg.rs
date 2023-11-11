@@ -136,15 +136,9 @@ impl State {
 
                 self.transform = self
                     .transform
-                    .then(Transform::translate(
-                        -0.5 * width,
-                        -0.5 * height,
-                    ))
+                    .then(Transform::translate(-0.5 * width, -0.5 * height))
                     .then(Transform::scale(1.02f32.powf(delta.y as f32)))
-                    .then(Transform::translate(
-                        0.5 * width,
-                        0.5 * height,
-                    ));
+                    .then(Transform::translate(0.5 * width, 0.5 * height));
 
                 return Response::Capture;
             }
