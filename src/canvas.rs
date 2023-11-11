@@ -1,6 +1,6 @@
 use crate::color::Color;
 use crate::geom::{Transform, Vec2};
-use crate::path::{Command, Path};
+use crate::path::Path;
 use crate::raster::{Rasterizer, Segment};
 use crate::text::Font;
 
@@ -79,29 +79,9 @@ impl Canvas {
 
         self.rasterizer.set_size(path_width, path_height);
 
-        let mut first = Vec2::new(0.0, 0.0);
-        let mut last = Vec2::new(0.0, 0.0);
-
-        path.flatten(transform, |command| match command {
-            Command::Move(point) => {
-                first = point;
-                last = point;
-            }
-            Command::Line(point) => {
-                self.add_segment(last - offset, point - offset);
-                last = point;
-            }
-            Command::Close => {
-                self.add_segment(last - offset, first - offset);
-                last = first;
-            }
-            _ => {
-                unreachable!();
-            }
+        path.flatten(transform, |p1, p2| {
+            self.add_segment(p1 - offset, p2 - offset);
         });
-        if last != first {
-            self.add_segment(last - offset, first - offset);
-        }
 
         self.drain_segments();
 

@@ -1,3 +1,5 @@
+use std::slice;
+
 use crate::geom::*;
 
 const TOLERANCE: f32 = 0.1;
@@ -159,58 +161,71 @@ impl Path {
     }
 
     #[inline]
-    pub(crate) fn flatten(&self, transform: &Transform, mut sink: impl FnMut(Command)) {
-        let mut last = Vec2::new(0.0, 0.0);
-        let mut points = self.points.iter();
-        for verb in self.verbs.iter() {
-            match *verb {
-                Verb::Move => {
-                    let point = transform.apply(*points.next().unwrap());
-                    sink(Command::Move(point));
-                    last = point;
+    pub(crate) fn flatten(&self, transform: &Transform, mut sink: impl FnMut(Vec2, Vec2)) {
+        for segment in self.segments() {
+            match segment {
+                Segment::Line(p1, p2) => {
+                    sink(transform.apply(p1), transform.apply(p2));
                 }
-                Verb::Line => {
-                    let point = transform.apply(*points.next().unwrap());
-                    sink(Command::Line(point));
-                    last = point;
-                }
-                Verb::Quadratic => {
-                    let control = transform.apply(*points.next().unwrap());
-                    let point = transform.apply(*points.next().unwrap());
-                    let dt = ((4.0 * TOLERANCE) / (last - 2.0 * control + point).length()).sqrt();
+                Segment::Quadratic(p1, p2, p3) => {
+                    let p1 = transform.apply(p1);
+                    let p2 = transform.apply(p2);
+                    let p3 = transform.apply(p3);
+
+                    let dt = ((4.0 * TOLERANCE) / (p1 - 2.0 * p2 + p3).length()).sqrt();
+
+                    let mut prev = p1;
                     let mut t = 0.0;
                     while t < 1.0 {
                         t = (t + dt).min(1.0);
-                        let p01 = Vec2::lerp(t, last, control);
-                        let p12 = Vec2::lerp(t, control, point);
-                        sink(Command::Line(Vec2::lerp(t, p01, p12)));
+
+                        let p01 = Vec2::lerp(t, p1, p2);
+                        let p12 = Vec2::lerp(t, p2, p3);
+                        let point = Vec2::lerp(t, p01, p12);
+
+                        sink(prev, point);
+                        prev = point;
                     }
-                    last = point;
                 }
-                Verb::Cubic => {
-                    let control1 = transform.apply(*points.next().unwrap());
-                    let control2 = transform.apply(*points.next().unwrap());
-                    let point = transform.apply(*points.next().unwrap());
-                    let a = -1.0 * last + 3.0 * control1 - 3.0 * control2 + point;
-                    let b = 3.0 * (last - 2.0 * control1 + control2);
+                Segment::Cubic(p1, p2, p3, p4) => {
+                    let p1 = transform.apply(p1);
+                    let p2 = transform.apply(p2);
+                    let p3 = transform.apply(p3);
+                    let p4 = transform.apply(p4);
+
+                    let a = -1.0 * p1 + 3.0 * p2 - 3.0 * p3 + p4;
+                    let b = 3.0 * (p1 - 2.0 * p2 + p3);
                     let conc = b.length().max((a + b).length());
                     let dt = ((8.0f32.sqrt() * TOLERANCE) / conc).sqrt();
+
+                    let mut prev = p1;
                     let mut t = 0.0;
                     while t < 1.0 {
                         t = (t + dt).min(1.0);
-                        let p01 = Vec2::lerp(t, last, control1);
-                        let p12 = Vec2::lerp(t, control1, control2);
-                        let p23 = Vec2::lerp(t, control2, point);
+
+                        let p01 = Vec2::lerp(t, p1, p2);
+                        let p12 = Vec2::lerp(t, p2, p3);
+                        let p23 = Vec2::lerp(t, p3, p4);
                         let p012 = Vec2::lerp(t, p01, p12);
                         let p123 = Vec2::lerp(t, p12, p23);
-                        sink(Command::Line(Vec2::lerp(t, p012, p123)));
+
+                        let point = Vec2::lerp(t, p012, p123);
+
+                        sink(prev, point);
+                        prev = point;
                     }
-                    last = point;
-                }
-                Verb::Close => {
-                    sink(Command::Close);
                 }
             }
+        }
+    }
+
+    #[inline]
+    pub fn segments(&self) -> Segments {
+        Segments {
+            first: Vec2::new(0.0, 0.0),
+            prev: Vec2::new(0.0, 0.0),
+            verbs: self.verbs.iter(),
+            points: self.points.iter(),
         }
     }
 
@@ -272,7 +287,14 @@ impl Path {
         }
 
         let mut flattened = Path::new();
-        self.flatten(transform, |command| flattened.push(command));
+        let mut prev = Vec2::new(0.0, 0.0);
+        self.flatten(transform, |p1, p2| {
+            if prev != p1 {
+                flattened.push(Command::Move(p1));
+            }
+            flattened.push(Command::Line(p2));
+            prev = p2
+        });
 
         // This is only valid for isotropic transforms.
         // FIXME: Handle arbitrary transforms properly.
@@ -335,5 +357,68 @@ impl Path {
         }
 
         path
+    }
+}
+
+pub enum Segment {
+    Line(Vec2, Vec2),
+    Quadratic(Vec2, Vec2, Vec2),
+    Cubic(Vec2, Vec2, Vec2, Vec2),
+}
+
+impl Segment {}
+
+pub struct Segments<'a> {
+    first: Vec2,
+    prev: Vec2,
+    verbs: slice::Iter<'a, Verb>,
+    points: slice::Iter<'a, Vec2>,
+}
+
+impl<'a> Iterator for Segments<'a> {
+    type Item = Segment;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        while let Some(verb) = self.verbs.next() {
+            match *verb {
+                Verb::Move => {
+                    self.first = *self.points.next().unwrap();
+                    self.prev = self.first;
+                }
+                Verb::Line => {
+                    let prev = self.prev;
+                    let point = *self.points.next().unwrap();
+                    self.prev = point;
+
+                    return Some(Segment::Line(prev, point));
+                }
+                Verb::Quadratic => {
+                    let prev = self.prev;
+                    let control = *self.points.next().unwrap();
+                    let point = *self.points.next().unwrap();
+                    self.prev = point;
+
+                    return Some(Segment::Quadratic(prev, control, point));
+                }
+                Verb::Cubic => {
+                    let prev = self.prev;
+                    let control1 = *self.points.next().unwrap();
+                    let control2 = *self.points.next().unwrap();
+                    let point = *self.points.next().unwrap();
+                    self.prev = point;
+
+                    return Some(Segment::Cubic(prev, control1, control2, point));
+                }
+                Verb::Close => {
+                    let prev = self.prev;
+                    self.prev = self.first;
+                    if prev != self.first {
+                        return Some(Segment::Line(prev, self.first));
+                    }
+                }
+            }
+        }
+
+        None
     }
 }
