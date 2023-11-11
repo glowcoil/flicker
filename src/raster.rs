@@ -149,23 +149,130 @@ impl Rasterizer {
         let mut y_offset;
         let y_offset_end;
         let dy;
+        let dxdy;
+        let dydx;
+        let mut x_offset_next;
+        let mut y_offset_next;
+        let y_out;
         if p_left.y < p_right.y {
             y_inc = 1;
             y_offset = p_left.y - y as f32;
             y_offset_end = p_right.y - y_end as f32;
             dy = p_right.y - p_left.y;
+
+            if y >= self.height as isize {
+                return;
+            }
+
+            if y_end < 0 {
+                return;
+            }
+
+            dxdy = dx / dy;
+
+            x_offset_next = x_offset + dxdy * (1.0 - y_offset);
+            if dx == 0.0 {
+                dydx = 0.0;
+                y_offset_next = f32::INFINITY;
+            } else {
+                dydx = dy / dx;
+                y_offset_next = y_offset + dydx * (1.0 - x_offset);
+            };
+
+            if y < 0 {
+                let x_jump = x_offset_next + dxdy * (-y - 1) as f32;
+                let x_inc = x_jump as isize;
+                x += x_inc;
+                x_offset = x_jump - x_inc as f32;
+                x_offset_next = x_offset + dxdy;
+
+                y_offset_next += dydx * x_inc as f32 + y as f32;
+                y = 0;
+                y_offset = 0.0;
+            }
+
+            y_out = self.height as isize;
         } else {
             y_inc = -1;
             y_offset = 1.0 - (p_left.y - y as f32);
             y_offset_end = 1.0 - (p_right.y - y_end as f32);
             dy = p_left.y - p_right.y;
+
+            if y < 0 {
+                return;
+            }
+
+            if y_end >= self.height as isize {
+                return;
+            }
+
+            dxdy = dx / dy;
+
+            x_offset_next = x_offset + dxdy * (1.0 - y_offset);
+            if dx == 0.0 {
+                dydx = 0.0;
+                y_offset_next = f32::INFINITY;
+            } else {
+                dydx = dy / dx;
+                y_offset_next = y_offset + dydx * (1.0 - x_offset);
+            };
+
+            if y >= self.height as isize {
+                let x_jump = x_offset_next + dxdy * (y - self.height as isize) as f32;
+                let x_inc = x_jump as isize;
+                x += x_inc;
+                x_offset = x_jump - x_inc as f32;
+                x_offset_next = x_offset + dxdy;
+
+                y_offset_next += dydx * x_inc as f32 - (y - (self.height - 1) as isize) as f32;
+                y = self.height as isize - 1;
+                y_offset = 0.0;
+            }
+
+            y_out = -1;
         }
 
-        let dxdy = dx / dy;
-        let dydx = dy / dx;
+        if x >= self.width as isize {
+            return;
+        }
 
-        let mut x_offset_next = x_offset + dxdy * (1.0 - y_offset);
-        let mut y_offset_next = y_offset + dydx * (1.0 - x_offset);
+        while x < 0 {
+            if y == y_end && x == x_end {
+                self.coverage[y as usize * self.stride] += sign * (y_offset_end - y_offset);
+                self.bitmasks[y as usize * self.bitmasks_width] |= 1;
+
+                return;
+            }
+
+            if y_offset_next > 1.0 {
+                self.coverage[y as usize * self.stride] += sign * (1.0 - y_offset);
+                self.bitmasks[y as usize * self.bitmasks_width] |= 1;
+
+                x_offset = x_offset_next;
+                x_offset_next += dxdy;
+
+                y += y_inc;
+                if y == y_out {
+                    return;
+                }
+
+                y_offset = 0.0;
+                y_offset_next -= 1.0;
+
+                continue;
+            }
+
+            self.coverage[y as usize * self.stride] += sign * (y_offset_next - y_offset);
+            self.bitmasks[y as usize * self.bitmasks_width] |= 1;
+
+            x += 1;
+
+            x_offset = 0.0;
+            x_offset_next -= 1.0;
+
+            y_offset = y_offset_next;
+            y_offset_next += dydx;
+        }
 
         let mut row_start = x as usize;
         let mut carry = 0.0;
@@ -177,7 +284,7 @@ impl Rasterizer {
                 self.coverage[y as usize * self.stride + x_end as usize + 1] += height - area;
                 self.fill_cells::<A>(y_end as usize, row_start, x_end as usize + 2);
 
-                break;
+                return;
             }
 
             if y_offset_next > 1.0 {
@@ -191,6 +298,10 @@ impl Rasterizer {
                 x_offset_next += dxdy;
 
                 y += y_inc;
+                if y == y_out {
+                    return;
+                }
+
                 y_offset = 0.0;
                 y_offset_next -= 1.0;
 
@@ -206,6 +317,12 @@ impl Rasterizer {
             carry = height - area;
 
             x += 1;
+            if x as usize == self.width {
+                self.fill_cells::<A>(y as usize, row_start, self.width);
+
+                return;
+            }
+
             x_offset = 0.0;
             x_offset_next -= 1.0;
 
