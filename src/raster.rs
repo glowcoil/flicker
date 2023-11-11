@@ -75,6 +75,7 @@ impl Methods {
 pub struct Rasterizer {
     methods: Methods,
     width: usize,
+    stride: usize,
     height: usize,
     coverage: Vec<f32>,
     bitmasks_width: usize,
@@ -90,13 +91,15 @@ impl Rasterizer {
     pub fn with_size(width: usize, height: usize) -> Rasterizer {
         let methods = Methods::specialize();
 
-        let bitmasks_width = (methods.bitmask_count_for_width)(width);
+        let stride = width + 1;
+        let bitmasks_width = (methods.bitmask_count_for_width)(stride);
 
         Rasterizer {
             methods,
             width,
+            stride,
             height,
-            coverage: vec![0.0; width * height],
+            coverage: vec![0.0; stride * height],
             bitmasks_width,
             bitmasks: vec![0; bitmasks_width * height],
         }
@@ -104,7 +107,8 @@ impl Rasterizer {
 
     pub fn set_size(&mut self, width: usize, height: usize) {
         self.width = width;
-        self.bitmasks_width = (self.methods.bitmask_count_for_width)(width);
+        self.stride = width + 1;
+        self.bitmasks_width = (self.methods.bitmask_count_for_width)(self.stride);
         self.height = height;
     }
 
@@ -169,8 +173,8 @@ impl Rasterizer {
             if y == y_end && x == x_end {
                 let height = sign * (y_offset_end - y_offset);
                 let area = 0.5 * height * (2.0 - x_offset - x_offset_end);
-                self.coverage[y as usize * self.width + x_end as usize] += carry + area;
-                self.coverage[y as usize * self.width + x_end as usize + 1] += height - area;
+                self.coverage[y as usize * self.stride + x_end as usize] += carry + area;
+                self.coverage[y as usize * self.stride + x_end as usize + 1] += height - area;
                 self.fill_cells::<A>(y_end as usize, row_start, x_end as usize + 2);
 
                 break;
@@ -179,8 +183,8 @@ impl Rasterizer {
             if y_offset_next > 1.0 {
                 let height = sign * (1.0 - y_offset);
                 let area = 0.5 * height * (2.0 - x_offset - x_offset_next);
-                self.coverage[y as usize * self.width + x as usize] += carry + area;
-                self.coverage[y as usize * self.width + x as usize + 1] += height - area;
+                self.coverage[y as usize * self.stride + x as usize] += carry + area;
+                self.coverage[y as usize * self.stride + x as usize + 1] += height - area;
                 self.fill_cells::<A>(y as usize, row_start, x as usize + 2);
 
                 x_offset = x_offset_next;
@@ -198,7 +202,7 @@ impl Rasterizer {
 
             let height = sign * (y_offset_next - y_offset);
             let area = 0.5 * height * (1.0 - x_offset);
-            self.coverage[y as usize * self.width + x as usize] += carry + area;
+            self.coverage[y as usize * self.stride + x as usize] += carry + area;
             carry = height - area;
 
             x += 1;
@@ -246,7 +250,7 @@ impl Rasterizer {
                 let mut accum = 0.0;
                 let mut coverage = 0.0;
 
-                let coverage_start = y * self.width;
+                let coverage_start = y * self.stride;
                 let coverage_end = coverage_start + self.width;
                 let coverage_row = &mut self.coverage[coverage_start..coverage_end];
 
@@ -378,6 +382,9 @@ impl Rasterizer {
                         break;
                     }
                 }
+
+                self.coverage[coverage_end] = 0.0;
+                self.bitmasks[bitmasks_end - 1] = 0;
             }
         })
     }

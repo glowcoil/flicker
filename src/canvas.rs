@@ -72,7 +72,7 @@ impl Canvas {
             return;
         }
 
-        let path_width = max_x - min_x + 1;
+        let path_width = max_x - min_x;
         let path_height = max_y - min_y;
 
         let offset = Vec2::new(min_x as f32, min_y as f32);
