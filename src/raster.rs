@@ -72,6 +72,39 @@ impl Methods {
     }
 }
 
+trait RasterConsts {
+    const SIGN: f32;
+    const Y_INCREMENT: isize;
+}
+
+struct PosXPosY;
+
+impl RasterConsts for PosXPosY {
+    const SIGN: f32 = 1.0;
+    const Y_INCREMENT: isize = 1;
+}
+
+struct PosXNegY;
+
+impl RasterConsts for PosXNegY {
+    const SIGN: f32 = -1.0;
+    const Y_INCREMENT: isize = -1;
+}
+
+struct NegXPosY;
+
+impl RasterConsts for NegXPosY {
+    const SIGN: f32 = 1.0;
+    const Y_INCREMENT: isize = -1;
+}
+
+struct NegXNegY;
+
+impl RasterConsts for NegXNegY {
+    const SIGN: f32 = -1.0;
+    const Y_INCREMENT: isize = 1;
+}
+
 pub struct Rasterizer {
     methods: Methods,
     width: usize,
@@ -119,25 +152,25 @@ impl Rasterizer {
     fn add_segments_inner<A: Arch>(&mut self, segments: &[Segment]) {
         invoke!(A, {
             for segment in segments {
-                self.add_segment::<A>(segment.p1, segment.p2);
+                if segment.p1.x < segment.p2.x {
+                    if segment.p1.y < segment.p2.y {
+                        self.add_segment::<A, PosXPosY>(segment.p1, segment.p2);
+                    } else {
+                        self.add_segment::<A, PosXNegY>(segment.p1, segment.p2);
+                    }
+                } else {
+                    if segment.p1.y < segment.p2.y {
+                        self.add_segment::<A, NegXPosY>(segment.p2, segment.p1);
+                    } else {
+                        self.add_segment::<A, NegXNegY>(segment.p2, segment.p1);
+                    }
+                }
             }
         })
     }
 
-    fn add_segment<A: Arch>(&mut self, p1: Vec2, p2: Vec2) {
+    fn add_segment<A: Arch, C: RasterConsts>(&mut self, p_left: Vec2, p_right: Vec2) {
         invoke!(A, {
-            let p_left;
-            let p_right;
-            if p1.x < p2.x {
-                p_left = p1;
-                p_right = p2;
-            } else {
-                p_left = p2;
-                p_right = p1;
-            }
-
-            let sign = (p2.y - p1.y).signum();
-
             let mut x = p_left.x.floor() as isize;
             let mut y = p_left.y.floor() as isize;
 
@@ -148,7 +181,6 @@ impl Rasterizer {
             let mut x_offset = p_left.x - x as f32;
             let x_offset_end = p_right.x - x_end as f32;
 
-            let y_inc;
             let mut y_offset;
             let y_offset_end;
             let dy;
@@ -157,8 +189,7 @@ impl Rasterizer {
             let mut x_offset_next;
             let mut y_offset_next;
             let y_out;
-            if p_left.y < p_right.y {
-                y_inc = 1;
+            if C::Y_INCREMENT == 1 {
                 y_offset = p_left.y - y as f32;
                 y_offset_end = p_right.y - y_end as f32;
                 dy = p_right.y - p_left.y;
@@ -196,7 +227,6 @@ impl Rasterizer {
 
                 y_out = self.height as isize;
             } else {
-                y_inc = -1;
                 y_offset = 1.0 - (p_left.y - y as f32);
                 y_offset_end = 1.0 - (p_right.y - y_end as f32);
                 dy = p_left.y - p_right.y;
@@ -241,20 +271,20 @@ impl Rasterizer {
 
             while x < 0 {
                 if y == y_end && x == x_end {
-                    self.coverage[y as usize * self.stride] += sign * (y_offset_end - y_offset);
+                    self.coverage[y as usize * self.stride] += C::SIGN * (y_offset_end - y_offset);
                     self.bitmasks[y as usize * self.bitmasks_width] |= 1;
 
                     return;
                 }
 
                 if y_offset_next > 1.0 {
-                    self.coverage[y as usize * self.stride] += sign * (1.0 - y_offset);
+                    self.coverage[y as usize * self.stride] += C::SIGN * (1.0 - y_offset);
                     self.bitmasks[y as usize * self.bitmasks_width] |= 1;
 
                     x_offset = x_offset_next;
                     x_offset_next += dxdy;
 
-                    y += y_inc;
+                    y += C::Y_INCREMENT;
                     if y == y_out {
                         return;
                     }
@@ -265,7 +295,7 @@ impl Rasterizer {
                     continue;
                 }
 
-                self.coverage[y as usize * self.stride] += sign * (y_offset_next - y_offset);
+                self.coverage[y as usize * self.stride] += C::SIGN * (y_offset_next - y_offset);
                 self.bitmasks[y as usize * self.bitmasks_width] |= 1;
 
                 x += 1;
@@ -281,7 +311,7 @@ impl Rasterizer {
             let mut carry = 0.0;
             loop {
                 if y == y_end && x == x_end {
-                    let height = sign * (y_offset_end - y_offset);
+                    let height = C::SIGN * (y_offset_end - y_offset);
                     let area = 0.5 * height * (2.0 - x_offset - x_offset_end);
                     self.coverage[y as usize * self.stride + x_end as usize] += carry + area;
                     self.coverage[y as usize * self.stride + x_end as usize + 1] += height - area;
@@ -291,7 +321,7 @@ impl Rasterizer {
                 }
 
                 if y_offset_next > 1.0 {
-                    let height = sign * (1.0 - y_offset);
+                    let height = C::SIGN * (1.0 - y_offset);
                     let area = 0.5 * height * (2.0 - x_offset - x_offset_next);
                     self.coverage[y as usize * self.stride + x as usize] += carry + area;
                     self.coverage[y as usize * self.stride + x as usize + 1] += height - area;
@@ -300,7 +330,7 @@ impl Rasterizer {
                     x_offset = x_offset_next;
                     x_offset_next += dxdy;
 
-                    y += y_inc;
+                    y += C::Y_INCREMENT;
                     if y == y_out {
                         return;
                     }
@@ -314,7 +344,7 @@ impl Rasterizer {
                     continue;
                 }
 
-                let height = sign * (y_offset_next - y_offset);
+                let height = C::SIGN * (y_offset_next - y_offset);
                 let area = 0.5 * height * (1.0 - x_offset);
                 self.coverage[y as usize * self.stride + x as usize] += carry + area;
                 carry = height - area;
