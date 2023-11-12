@@ -218,22 +218,22 @@ impl Rasterizer {
         })
     }
 
-    fn add_segment<A: Arch, Flip: FlipCoords>(&mut self, p_left: Vec2, p_right: Vec2) {
+    fn add_segment<A: Arch, Flip: FlipCoords>(&mut self, p1: Vec2, p2: Vec2) {
         invoke!(A, {
-            let p_left = Flip::y_coord(p_left, self.height as isize);
-            let p_right = Flip::y_coord(p_right, self.height as isize);
+            let p1 = Flip::y_coord(p1, self.height as isize);
+            let p2 = Flip::y_coord(p2, self.height as isize);
 
-            let mut x = p_left.x.floor() as isize;
-            let mut y = p_left.y.floor() as isize;
+            let mut x = p1.x.floor() as isize;
+            let mut y = p1.y.floor() as isize;
 
-            let x_end = p_right.x.floor() as isize;
-            let y_end = p_right.y.floor() as isize;
+            let x_end = p2.x.floor() as isize;
+            let y_end = p2.y.floor() as isize;
 
-            let dx = p_right.x - p_left.x;
-            let dy = p_right.y - p_left.y;
+            let dx = p2.x - p1.x;
+            let dy = p2.y - p1.y;
 
-            let mut x_offset = p_left.x - x as f32;
-            let x_offset_end = p_right.x - x_end as f32;
+            let mut x_offset = p1.x - x as f32;
+            let x_offset_end = p2.x - x_end as f32;
 
             if y >= self.height as isize {
                 return;
@@ -243,8 +243,8 @@ impl Rasterizer {
                 return;
             }
 
-            let mut y_offset = p_left.y - y as f32;
-            let y_offset_end = p_right.y - y_end as f32;
+            let mut y_offset = p1.y - y as f32;
+            let y_offset_end = p2.y - y_end as f32;
 
             let dxdy = dx / dy;
 
