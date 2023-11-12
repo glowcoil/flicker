@@ -74,8 +74,8 @@ impl Methods {
 
 trait FlipCoords {
     fn winding(value: f32) -> f32;
-    fn row(y: isize, height: isize) -> isize;
-    fn y_coord(p: Vec2, height: isize) -> Vec2;
+    fn row(y: usize, height: usize) -> usize;
+    fn y_coord(p: Vec2, height: f32) -> Vec2;
 }
 
 struct PosXPosY;
@@ -87,12 +87,12 @@ impl FlipCoords for PosXPosY {
     }
 
     #[inline(always)]
-    fn row(y: isize, _height: isize) -> isize {
+    fn row(y: usize, _height: usize) -> usize {
         y
     }
 
     #[inline(always)]
-    fn y_coord(p: Vec2, _height: isize) -> Vec2 {
+    fn y_coord(p: Vec2, _height: f32) -> Vec2 {
         Vec2::new(p.x, p.y)
     }
 }
@@ -106,13 +106,13 @@ impl FlipCoords for PosXNegY {
     }
 
     #[inline(always)]
-    fn row(y: isize, height: isize) -> isize {
+    fn row(y: usize, height: usize) -> usize {
         height - 1 - y
     }
 
     #[inline(always)]
-    fn y_coord(p: Vec2, height: isize) -> Vec2 {
-        Vec2::new(p.x, height as f32 - p.y)
+    fn y_coord(p: Vec2, height: f32) -> Vec2 {
+        Vec2::new(p.x, height - p.y)
     }
 }
 
@@ -125,13 +125,13 @@ impl FlipCoords for NegXPosY {
     }
 
     #[inline(always)]
-    fn row(y: isize, height: isize) -> isize {
+    fn row(y: usize, height: usize) -> usize {
         height - 1 - y
     }
 
     #[inline(always)]
-    fn y_coord(p: Vec2, height: isize) -> Vec2 {
-        Vec2::new(p.x, height as f32 - p.y)
+    fn y_coord(p: Vec2, height: f32) -> Vec2 {
+        Vec2::new(p.x, height - p.y)
     }
 }
 
@@ -144,12 +144,12 @@ impl FlipCoords for NegXNegY {
     }
 
     #[inline(always)]
-    fn row(y: isize, _height: isize) -> isize {
+    fn row(y: usize, _height: usize) -> usize {
         y
     }
 
     #[inline(always)]
-    fn y_coord(p: Vec2, _height: isize) -> Vec2 {
+    fn y_coord(p: Vec2, _height: f32) -> Vec2 {
         Vec2::new(p.x, p.y)
     }
 }
@@ -220,163 +220,152 @@ impl Rasterizer {
 
     fn add_segment<A: Arch, Flip: FlipCoords>(&mut self, p1: Vec2, p2: Vec2) {
         invoke!(A, {
-            let p1 = Flip::y_coord(p1, self.height as isize);
-            let p2 = Flip::y_coord(p2, self.height as isize);
+            let width = self.width as f32;
+            let height = self.height as f32;
 
-            let mut x = p1.x.floor() as isize;
-            let mut y = p1.y.floor() as isize;
+            let mut p1 = Flip::y_coord(p1, height);
+            let mut p2 = Flip::y_coord(p2, height);
 
-            let x_end = p2.x.floor() as isize;
-            let y_end = p2.y.floor() as isize;
+            if p1.y >= height {
+                return;
+            }
+
+            if p2.y <= 0.0 {
+                return;
+            }
 
             let dx = p2.x - p1.x;
             let dy = p2.y - p1.y;
-
-            let mut x_offset = p1.x - x as f32;
-            let x_offset_end = p2.x - x_end as f32;
-
-            if y >= self.height as isize {
-                return;
-            }
-
-            if y_end < 0 {
-                return;
-            }
-
-            let mut y_offset = p1.y - y as f32;
-            let y_offset_end = p2.y - y_end as f32;
-
             let dxdy = dx / dy;
+            let dydx = dy / dx;
 
-            let dydx;
-            let mut x_offset_next = x_offset + dxdy * (1.0 - y_offset);
-            let mut y_offset_next;
-            if dx == 0.0 {
-                dydx = 0.0;
-                y_offset_next = f32::INFINITY;
-            } else {
-                dydx = dy / dx;
-                y_offset_next = y_offset + dydx * (1.0 - x_offset);
-            };
-
-            if y < 0 {
-                let x_jump = x_offset_next + dxdy * (-y - 1) as f32;
-                let x_inc = x_jump as isize;
-                x += x_inc;
-                x_offset = x_jump - x_inc as f32;
-                x_offset_next = x_offset + dxdy;
-
-                y_offset_next += dydx * x_inc as f32 + y as f32;
-                y = 0;
-                y_offset = 0.0;
+            if p1.y < 0.0 {
+                p1.x -= dxdy * p1.y;
+                p1.y = 0.0;
             }
 
-            if x >= self.width as isize {
+            if p2.y > height {
+                p2.x -= dxdy * (p2.y - height);
+                p2.y = height;
+            }
+
+            if p1.x >= width {
                 return;
             }
 
-            while x < 0 {
-                if y == y_end && x == x_end {
-                    let row = Flip::row(y, self.height as isize) as usize;
-                    self.coverage[row * self.stride] += Flip::winding(y_offset_end - y_offset);
-                    self.bitmasks[row * self.bitmasks_width] |= 1;
-
-                    return;
+            if p1.x < 0.0 {
+                let mut p_split = p2;
+                if p_split.x > 0.0 {
+                    p_split.y -= dydx * p_split.x;
+                    p_split.x = 0.0;
                 }
 
-                if y_offset_next > 1.0 {
-                    let row = Flip::row(y, self.height as isize) as usize;
-                    self.coverage[row * self.stride] += Flip::winding(1.0 - y_offset);
-                    self.bitmasks[row * self.bitmasks_width] |= 1;
+                let mut y = (p1.y as usize).max(0);
+                let mut y_offset = p1.y - y as f32;
 
-                    x_offset = x_offset_next;
-                    x_offset_next += dxdy;
+                let y_end = (p_split.y as usize).min(self.height - 1);
+                let y_offset_end = p_split.y - y_end as f32;
+
+                while y < y_end {
+                    let row = Flip::row(y, self.height);
+                    self.coverage[..self.stride * self.height][row * self.stride] += Flip::winding(1.0 - y_offset);
+                    self.bitmasks[row * self.bitmasks_width] |= 1;
 
                     y += 1;
-                    if y == self.height as isize {
-                        return;
-                    }
-
                     y_offset = 0.0;
-                    y_offset_next -= 1.0;
-
-                    continue;
                 }
 
-                let row = Flip::row(y, self.height as isize) as usize;
-                self.coverage[row * self.stride] += Flip::winding(y_offset_next - y_offset);
+                let row = Flip::row(y_end, self.height);
+                self.coverage[..self.stride * self.height][row * self.stride] += Flip::winding(y_offset_end - y_offset);
                 self.bitmasks[row * self.bitmasks_width] |= 1;
 
-                x += 1;
-
-                x_offset = 0.0;
-                x_offset_next -= 1.0;
-
-                y_offset = y_offset_next;
-                y_offset_next += dydx;
+                p1 = p_split;
             }
 
-            let mut row_start = x as usize;
+            if p2.x <= 0.0 {
+                return;
+            }
+
+            if p2.x >= width {
+                p2.y -= dydx * (p2.x - width);
+                p2.x = width;
+            }
+
+            let mut y = p1.y.floor() as usize;
+            let mut y_offset = p1.y - y as f32;
+
+            let y_end = (p2.y.floor() as usize).min(self.height - 1);
+            let y_offset_end = p2.y - y_end as f32;
+
+            let mut x = (p1.x as usize).max(0);
+            let mut x_offset = p1.x - x as f32;
+
+            let x_end = (p2.x as usize).min(self.width - 1);
+            let x_offset_end = p2.x - x_end as f32;
+
+            let mut x_offset_next = x_offset + dxdy * (1.0 - y_offset);
+            let mut y_offset_next = y_offset + dydx * (1.0 - x_offset);
+
+            while y < y_end {
+                let row_start = x;
+                let mut carry = 0.0;
+                while y_offset_next < 1.0 {
+                    let height = Flip::winding(y_offset_next - y_offset);
+                    let area = 0.5 * height * (1.0 - x_offset);
+
+                    let row = Flip::row(y, self.height);
+                    self.coverage[..self.stride * self.height][row * self.stride + x] += carry + area;
+                    carry = height - area;
+
+                    x += 1;
+                    x_offset = 0.0;
+                    x_offset_next -= 1.0;
+
+                    y_offset = y_offset_next;
+                    y_offset_next += dydx;
+                }
+
+                let height = Flip::winding(1.0 - y_offset);
+                let area = 0.5 * height * (2.0 - x_offset - x_offset_next);
+
+                let row = Flip::row(y, self.height);
+                self.coverage[..self.stride * self.height][row * self.stride + x] += carry + area;
+                self.coverage[..self.stride * self.height][row * self.stride + x + 1] += height - area;
+                self.fill_cells::<A>(row, row_start, x + 2);
+
+                x_offset = x_offset_next;
+                x_offset_next += dxdy;
+
+                y += 1;
+                y_offset = 0.0;
+                y_offset_next -= 1.0;
+            }
+
+            let row_start = x;
             let mut carry = 0.0;
-            loop {
-                if y == y_end && x == x_end {
-                    let height = Flip::winding(y_offset_end - y_offset);
-                    let area = 0.5 * height * (2.0 - x_offset - x_offset_end);
-
-                    let row = Flip::row(y, self.height as isize) as usize;
-                    self.coverage[row * self.stride + x_end as usize] += carry + area;
-                    self.coverage[row * self.stride + x_end as usize + 1] += height - area;
-                    self.fill_cells::<A>(row, row_start, x_end as usize + 2);
-
-                    return;
-                }
-
-                if y_offset_next > 1.0 {
-                    let height = Flip::winding(1.0 - y_offset);
-                    let area = 0.5 * height * (2.0 - x_offset - x_offset_next);
-
-                    let row = Flip::row(y, self.height as isize) as usize;
-                    self.coverage[row * self.stride + x as usize] += carry + area;
-                    self.coverage[row * self.stride + x as usize + 1] += height - area;
-                    self.fill_cells::<A>(row, row_start, x as usize + 2);
-
-                    x_offset = x_offset_next;
-                    x_offset_next += dxdy;
-
-                    y += 1;
-                    if y == self.height as isize {
-                        return;
-                    }
-
-                    y_offset = 0.0;
-                    y_offset_next -= 1.0;
-
-                    row_start = x as usize;
-                    carry = 0.0;
-
-                    continue;
-                }
-
+            while x < x_end {
                 let height = Flip::winding(y_offset_next - y_offset);
                 let area = 0.5 * height * (1.0 - x_offset);
 
-                let row = Flip::row(y, self.height as isize) as usize;
-                self.coverage[row * self.stride + x as usize] += carry + area;
+                let row = Flip::row(y, self.height);
+                self.coverage[..self.stride * self.height][row * self.stride + x] += carry + area;
                 carry = height - area;
 
                 x += 1;
-                if x as usize == self.width {
-                    self.fill_cells::<A>(row, row_start, self.width);
-
-                    return;
-                }
-
                 x_offset = 0.0;
                 x_offset_next -= 1.0;
 
                 y_offset = y_offset_next;
                 y_offset_next += dydx;
             }
+
+            let height = Flip::winding(y_offset_end - y_offset);
+            let area = 0.5 * height * (2.0 - x_offset - x_offset_end);
+
+            let row = Flip::row(y, self.height);
+            self.coverage[..self.stride * self.height][row * self.stride + x] += carry + area;
+            self.coverage[..self.stride * self.height][row * self.stride + x + 1] += height - area;
+            self.fill_cells::<A>(row, row_start, x + 2);
         })
     }
 
