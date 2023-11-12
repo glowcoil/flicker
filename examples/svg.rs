@@ -130,9 +130,8 @@ impl State {
                 return Response::Capture;
             }
             Event::Scroll(delta) => {
-                let scale = cx.window().scale() as f32;
-                let width = WIDTH as f32 * scale;
-                let height = HEIGHT as f32 * scale;
+                let width = WIDTH as f32;
+                let height = HEIGHT as f32;
 
                 self.transform = self
                     .transform
