@@ -72,37 +72,86 @@ impl Methods {
     }
 }
 
-trait RasterConsts {
-    const SIGN: f32;
-    const Y_INCREMENT: isize;
+trait FlipCoords {
+    fn winding(value: f32) -> f32;
+    fn row(y: isize, height: isize) -> isize;
+    fn y_coord(p: Vec2, height: isize) -> Vec2;
 }
 
 struct PosXPosY;
 
-impl RasterConsts for PosXPosY {
-    const SIGN: f32 = 1.0;
-    const Y_INCREMENT: isize = 1;
+impl FlipCoords for PosXPosY {
+    #[inline(always)]
+    fn winding(value: f32) -> f32 {
+        value
+    }
+
+    #[inline(always)]
+    fn row(y: isize, _height: isize) -> isize {
+        y
+    }
+
+    #[inline(always)]
+    fn y_coord(p: Vec2, _height: isize) -> Vec2 {
+        Vec2::new(p.x, p.y)
+    }
 }
 
 struct PosXNegY;
 
-impl RasterConsts for PosXNegY {
-    const SIGN: f32 = -1.0;
-    const Y_INCREMENT: isize = -1;
+impl FlipCoords for PosXNegY {
+    #[inline(always)]
+    fn winding(value: f32) -> f32 {
+        -value
+    }
+
+    #[inline(always)]
+    fn row(y: isize, height: isize) -> isize {
+        height - 1 - y
+    }
+
+    #[inline(always)]
+    fn y_coord(p: Vec2, height: isize) -> Vec2 {
+        Vec2::new(p.x, height as f32 - p.y)
+    }
 }
 
 struct NegXPosY;
 
-impl RasterConsts for NegXPosY {
-    const SIGN: f32 = 1.0;
-    const Y_INCREMENT: isize = -1;
+impl FlipCoords for NegXPosY {
+    #[inline(always)]
+    fn winding(value: f32) -> f32 {
+        value
+    }
+
+    #[inline(always)]
+    fn row(y: isize, height: isize) -> isize {
+        height - 1 - y
+    }
+
+    #[inline(always)]
+    fn y_coord(p: Vec2, height: isize) -> Vec2 {
+        Vec2::new(p.x, height as f32 - p.y)
+    }
 }
 
 struct NegXNegY;
 
-impl RasterConsts for NegXNegY {
-    const SIGN: f32 = -1.0;
-    const Y_INCREMENT: isize = 1;
+impl FlipCoords for NegXNegY {
+    #[inline(always)]
+    fn winding(value: f32) -> f32 {
+        -value
+    }
+
+    #[inline(always)]
+    fn row(y: isize, _height: isize) -> isize {
+        y
+    }
+
+    #[inline(always)]
+    fn y_coord(p: Vec2, _height: isize) -> Vec2 {
+        Vec2::new(p.x, p.y)
+    }
 }
 
 pub struct Rasterizer {
@@ -169,8 +218,11 @@ impl Rasterizer {
         })
     }
 
-    fn add_segment<A: Arch, C: RasterConsts>(&mut self, p_left: Vec2, p_right: Vec2) {
+    fn add_segment<A: Arch, Flip: FlipCoords>(&mut self, p_left: Vec2, p_right: Vec2) {
         invoke!(A, {
+            let p_left = Flip::y_coord(p_left, self.height as isize);
+            let p_right = Flip::y_coord(p_right, self.height as isize);
+
             let mut x = p_left.x.floor() as isize;
             let mut y = p_left.y.floor() as isize;
 
@@ -178,91 +230,45 @@ impl Rasterizer {
             let y_end = p_right.y.floor() as isize;
 
             let dx = p_right.x - p_left.x;
+            let dy = p_right.y - p_left.y;
+
             let mut x_offset = p_left.x - x as f32;
             let x_offset_end = p_right.x - x_end as f32;
 
-            let mut y_offset;
-            let y_offset_end;
-            let dy;
-            let dxdy;
+            if y >= self.height as isize {
+                return;
+            }
+
+            if y_end < 0 {
+                return;
+            }
+
+            let mut y_offset = p_left.y - y as f32;
+            let y_offset_end = p_right.y - y_end as f32;
+
+            let dxdy = dx / dy;
+
             let dydx;
-            let mut x_offset_next;
+            let mut x_offset_next = x_offset + dxdy * (1.0 - y_offset);
             let mut y_offset_next;
-            let y_out;
-            if C::Y_INCREMENT == 1 {
-                y_offset = p_left.y - y as f32;
-                y_offset_end = p_right.y - y_end as f32;
-                dy = p_right.y - p_left.y;
-
-                if y >= self.height as isize {
-                    return;
-                }
-
-                if y_end < 0 {
-                    return;
-                }
-
-                dxdy = dx / dy;
-
-                x_offset_next = x_offset + dxdy * (1.0 - y_offset);
-                if dx == 0.0 {
-                    dydx = 0.0;
-                    y_offset_next = f32::INFINITY;
-                } else {
-                    dydx = dy / dx;
-                    y_offset_next = y_offset + dydx * (1.0 - x_offset);
-                };
-
-                if y < 0 {
-                    let x_jump = x_offset_next + dxdy * (-y - 1) as f32;
-                    let x_inc = x_jump as isize;
-                    x += x_inc;
-                    x_offset = x_jump - x_inc as f32;
-                    x_offset_next = x_offset + dxdy;
-
-                    y_offset_next += dydx * x_inc as f32 + y as f32;
-                    y = 0;
-                    y_offset = 0.0;
-                }
-
-                y_out = self.height as isize;
+            if dx == 0.0 {
+                dydx = 0.0;
+                y_offset_next = f32::INFINITY;
             } else {
-                y_offset = 1.0 - (p_left.y - y as f32);
-                y_offset_end = 1.0 - (p_right.y - y_end as f32);
-                dy = p_left.y - p_right.y;
+                dydx = dy / dx;
+                y_offset_next = y_offset + dydx * (1.0 - x_offset);
+            };
 
-                if y < 0 {
-                    return;
-                }
+            if y < 0 {
+                let x_jump = x_offset_next + dxdy * (-y - 1) as f32;
+                let x_inc = x_jump as isize;
+                x += x_inc;
+                x_offset = x_jump - x_inc as f32;
+                x_offset_next = x_offset + dxdy;
 
-                if y_end >= self.height as isize {
-                    return;
-                }
-
-                dxdy = dx / dy;
-
-                x_offset_next = x_offset + dxdy * (1.0 - y_offset);
-                if dx == 0.0 {
-                    dydx = 0.0;
-                    y_offset_next = f32::INFINITY;
-                } else {
-                    dydx = dy / dx;
-                    y_offset_next = y_offset + dydx * (1.0 - x_offset);
-                };
-
-                if y >= self.height as isize {
-                    let x_jump = x_offset_next + dxdy * (y - self.height as isize) as f32;
-                    let x_inc = x_jump as isize;
-                    x += x_inc;
-                    x_offset = x_jump - x_inc as f32;
-                    x_offset_next = x_offset + dxdy;
-
-                    y_offset_next += dydx * x_inc as f32 - (y - (self.height - 1) as isize) as f32;
-                    y = self.height as isize - 1;
-                    y_offset = 0.0;
-                }
-
-                y_out = -1;
+                y_offset_next += dydx * x_inc as f32 + y as f32;
+                y = 0;
+                y_offset = 0.0;
             }
 
             if x >= self.width as isize {
@@ -271,21 +277,23 @@ impl Rasterizer {
 
             while x < 0 {
                 if y == y_end && x == x_end {
-                    self.coverage[y as usize * self.stride] += C::SIGN * (y_offset_end - y_offset);
-                    self.bitmasks[y as usize * self.bitmasks_width] |= 1;
+                    let row = Flip::row(y, self.height as isize) as usize;
+                    self.coverage[row * self.stride] += Flip::winding(y_offset_end - y_offset);
+                    self.bitmasks[row * self.bitmasks_width] |= 1;
 
                     return;
                 }
 
                 if y_offset_next > 1.0 {
-                    self.coverage[y as usize * self.stride] += C::SIGN * (1.0 - y_offset);
-                    self.bitmasks[y as usize * self.bitmasks_width] |= 1;
+                    let row = Flip::row(y, self.height as isize) as usize;
+                    self.coverage[row * self.stride] += Flip::winding(1.0 - y_offset);
+                    self.bitmasks[row * self.bitmasks_width] |= 1;
 
                     x_offset = x_offset_next;
                     x_offset_next += dxdy;
 
-                    y += C::Y_INCREMENT;
-                    if y == y_out {
+                    y += 1;
+                    if y == self.height as isize {
                         return;
                     }
 
@@ -295,8 +303,9 @@ impl Rasterizer {
                     continue;
                 }
 
-                self.coverage[y as usize * self.stride] += C::SIGN * (y_offset_next - y_offset);
-                self.bitmasks[y as usize * self.bitmasks_width] |= 1;
+                let row = Flip::row(y, self.height as isize) as usize;
+                self.coverage[row * self.stride] += Flip::winding(y_offset_next - y_offset);
+                self.bitmasks[row * self.bitmasks_width] |= 1;
 
                 x += 1;
 
@@ -311,27 +320,31 @@ impl Rasterizer {
             let mut carry = 0.0;
             loop {
                 if y == y_end && x == x_end {
-                    let height = C::SIGN * (y_offset_end - y_offset);
+                    let height = Flip::winding(y_offset_end - y_offset);
                     let area = 0.5 * height * (2.0 - x_offset - x_offset_end);
-                    self.coverage[y as usize * self.stride + x_end as usize] += carry + area;
-                    self.coverage[y as usize * self.stride + x_end as usize + 1] += height - area;
-                    self.fill_cells::<A>(y_end as usize, row_start, x_end as usize + 2);
+
+                    let row = Flip::row(y, self.height as isize) as usize;
+                    self.coverage[row * self.stride + x_end as usize] += carry + area;
+                    self.coverage[row * self.stride + x_end as usize + 1] += height - area;
+                    self.fill_cells::<A>(row, row_start, x_end as usize + 2);
 
                     return;
                 }
 
                 if y_offset_next > 1.0 {
-                    let height = C::SIGN * (1.0 - y_offset);
+                    let height = Flip::winding(1.0 - y_offset);
                     let area = 0.5 * height * (2.0 - x_offset - x_offset_next);
-                    self.coverage[y as usize * self.stride + x as usize] += carry + area;
-                    self.coverage[y as usize * self.stride + x as usize + 1] += height - area;
-                    self.fill_cells::<A>(y as usize, row_start, x as usize + 2);
+
+                    let row = Flip::row(y, self.height as isize) as usize;
+                    self.coverage[row * self.stride + x as usize] += carry + area;
+                    self.coverage[row * self.stride + x as usize + 1] += height - area;
+                    self.fill_cells::<A>(row, row_start, x as usize + 2);
 
                     x_offset = x_offset_next;
                     x_offset_next += dxdy;
 
-                    y += C::Y_INCREMENT;
-                    if y == y_out {
+                    y += 1;
+                    if y == self.height as isize {
                         return;
                     }
 
@@ -344,14 +357,16 @@ impl Rasterizer {
                     continue;
                 }
 
-                let height = C::SIGN * (y_offset_next - y_offset);
+                let height = Flip::winding(y_offset_next - y_offset);
                 let area = 0.5 * height * (1.0 - x_offset);
-                self.coverage[y as usize * self.stride + x as usize] += carry + area;
+
+                let row = Flip::row(y, self.height as isize) as usize;
+                self.coverage[row * self.stride + x as usize] += carry + area;
                 carry = height - area;
 
                 x += 1;
                 if x as usize == self.width {
-                    self.fill_cells::<A>(y as usize, row_start, self.width);
+                    self.fill_cells::<A>(row, row_start, self.width);
 
                     return;
                 }
