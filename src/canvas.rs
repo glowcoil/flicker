@@ -93,7 +93,41 @@ impl Canvas {
     }
 
     pub fn stroke_path(&mut self, path: &Path, width: f32, transform: &Transform, color: Color) {
-        self.fill_path(&path.stroke(width, transform), &Transform::id(), color);
+        if path.is_empty() {
+            return;
+        }
+
+        let (mut min, mut max) = path.bounds(transform);
+        min.x -= 0.5 * width;
+        min.y -= 0.5 * width;
+        max.x += 0.5 * width;
+        max.y += 0.5 * width;
+
+        let min_x = (min.x.floor() as isize).max(0).min(self.width as isize) as usize;
+        let min_y = (min.y.floor() as isize).max(0).min(self.width as isize) as usize;
+        let max_x = ((max.x.ceil() + 1.0) as isize).max(0).min(self.width as isize) as usize;
+        let max_y = ((max.y.ceil() + 1.0) as isize).max(0).min(self.height as isize) as usize;
+
+        if max_x <= min_x || max_y <= min_y {
+            return;
+        }
+
+        let path_width = max_x - min_x;
+        let path_height = max_y - min_y;
+
+        let offset = Vec2::new(min_x as f32, min_y as f32);
+
+        self.rasterizer.set_size(path_width, path_height);
+
+        path.stroke(width, transform, |p1, p2| {
+            self.add_segment(p1 - offset, p2 - offset);
+        });
+
+        self.drain_segments();
+
+        let data_start = min_y * self.width + min_x;
+        self.rasterizer
+            .finish(color, &mut self.data[data_start..], self.width);
     }
 
     pub fn fill_text(

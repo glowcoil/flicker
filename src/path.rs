@@ -171,135 +171,45 @@ impl Path {
     }
 
     #[inline]
-    pub(crate) fn stroke(&self, width: f32, transform: &Transform) -> Path {
-        #[inline]
-        fn join(path: &mut Path, width: f32, prev_normal: Vec2, next_normal: Vec2, point: Vec2) {
-            let offset = 1.0 / (1.0 + prev_normal.dot(next_normal));
-            if offset.abs() > 2.0 {
-                path.line_to(point + 0.5 * width * prev_normal);
-                path.line_to(point + 0.5 * width * next_normal);
-            } else {
-                path.line_to(point + 0.5 * width * offset * (prev_normal + next_normal));
-            }
-        }
-
-        #[inline]
-        fn offset(path: &mut Path, width: f32, contour: &[Vec2], closed: bool, reverse: bool) {
-            let first_point = if closed == reverse {
-                contour[0]
-            } else {
-                *contour.last().unwrap()
-            };
-            let mut prev_point = first_point;
-            let mut prev_normal = Vec2::new(0.0, 0.0);
-            let mut i = 0;
-            loop {
-                let next_point = if i < contour.len() {
-                    if reverse {
-                        contour[contour.len() - i - 1]
-                    } else {
-                        contour[i]
-                    }
-                } else {
-                    first_point
-                };
-
-                if next_point != prev_point || i == contour.len() {
-                    let next_tangent = next_point - prev_point;
-                    let next_normal = Vec2::new(-next_tangent.y, next_tangent.x);
-                    let next_normal_len = next_normal.length();
-                    let next_normal = if next_normal_len == 0.0 {
-                        Vec2::new(0.0, 0.0)
-                    } else {
-                        next_normal * (1.0 / next_normal_len)
-                    };
-
-                    join(path, width, prev_normal, next_normal, prev_point);
-
-                    prev_point = next_point;
-                    prev_normal = next_normal;
-                }
-
-                i += 1;
-                if i > contour.len() {
-                    break;
-                }
-            }
-        }
-
-        let mut flattened = Path::new();
-        let mut prev = Vec2::new(0.0, 0.0);
-        for segment in self.segments() {
-            segment.flatten(transform, |p1, p2| {
-                if prev != p1 {
-                    flattened.push(Command::Move(p1));
-                }
-                flattened.push(Command::Line(p2));
-                prev = p2
-            });
-        }
-
+    pub(crate) fn stroke(&self, width: f32, transform: &Transform, mut sink: impl FnMut(Vec2, Vec2)) {
         // This is only valid for isotropic transforms.
         // FIXME: Handle arbitrary transforms properly.
         let width = transform.matrix.determinant().abs().sqrt() * width;
 
-        let mut path = Path::new();
+        let mut prev = Vec2::new(0.0, 0.0);
+        let mut prev_normal = Vec2::new(0.0, 0.0);
+        for segment in self.segments() {
+            segment.flatten(transform, |p1, p2| {
+                let tangent = p2 - p1;
+                let normal = Vec2::new(-tangent.y, tangent.x);
+                let normal_len = normal.length();
+                let normal = if normal_len == 0.0 {
+                    Vec2::new(0.0, 0.0)
+                } else {
+                    normal * (1.0 / normal_len)
+                };
 
-        let mut contour_start = 0;
-        let mut contour_end = 0;
-        let mut closed = false;
-        let mut verbs = flattened.verbs.iter();
-        loop {
-            let verb = verbs.next();
-
-            if let Some(Verb::Close) = verb {
-                closed = true;
-            }
-
-            if let None | Some(Verb::Move) | Some(Verb::Close) = verb {
-                if contour_start != contour_end {
-                    let contour = &flattened.points[contour_start..contour_end];
-
-                    let base = path.verbs.len();
-                    offset(&mut path, width, contour, closed, false);
-                    path.verbs[base] = Verb::Move;
-                    if closed {
-                        path.close();
-                    }
-
-                    let base = path.verbs.len();
-                    offset(&mut path, width, contour, closed, true);
-                    if closed {
-                        path.verbs[base] = Verb::Move;
-                    }
-                    path.close();
+                let offset = 0.5 * width * normal;
+                let prev_offset = 0.5 * width * prev_normal;
+                if prev == p1 {
+                    sink(prev + prev_offset, p1 + offset);
+                    sink(p1 + offset, p2 + offset);
+                    sink(p1 - offset, prev - prev_offset);
+                    sink(p2 - offset, p1 - offset);
+                } else {
+                    sink(prev + prev_offset, prev - prev_offset);
+                    sink(p1 - offset, p1 + offset);
+                    sink(p1 + offset, p2 + offset);
+                    sink(p2 - offset, p1 - offset);
                 }
-            }
 
-            if let Some(verb) = verb {
-                match verb {
-                    Verb::Move => {
-                        contour_start = contour_end;
-                        contour_end = contour_start + 1;
-                    }
-                    Verb::Line => {
-                        contour_end += 1;
-                    }
-                    Verb::Close => {
-                        contour_start = contour_end;
-                        contour_end = contour_start;
-                        closed = true;
-                    }
-                    _ => {
-                        unreachable!();
-                    }
-                }
-            } else {
-                break;
-            }
+                prev_normal = normal;
+                prev = p2;
+            });
         }
 
-        path
+        let prev_offset = 0.5 * width * prev_normal;
+        sink(prev + prev_offset, prev - prev_offset);
     }
 }
 
