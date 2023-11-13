@@ -320,14 +320,13 @@ impl Rasterizer {
 
             while y < y_end {
                 let row_start = x;
-                let mut carry = 0.0;
                 while y_offset_next < 1.0 {
                     let height = Flip::winding(y_offset_next - y_offset);
                     let area = 0.5 * height * (1.0 - x_offset);
 
                     let row = Flip::row(y, self.height);
-                    self.coverage[row * self.stride + x] += carry + area;
-                    carry = height - area;
+                    self.coverage[row * self.stride + x] += area;
+                    self.coverage[row * self.stride + x + 1] += height - area;
 
                     x += 1;
                     x_offset = 0.0;
@@ -341,7 +340,7 @@ impl Rasterizer {
                 let area = 0.5 * height * (2.0 - x_offset - x_offset_next);
 
                 let row = Flip::row(y, self.height);
-                self.coverage[row * self.stride + x] += carry + area;
+                self.coverage[row * self.stride + x] += area;
                 self.coverage[row * self.stride + x + 1] += height - area;
                 self.fill_cells::<A>(row, row_start, x + 2);
 
@@ -354,14 +353,13 @@ impl Rasterizer {
             }
 
             let row_start = x;
-            let mut carry = 0.0;
             while x < x_end {
                 let height = Flip::winding(y_offset_next - y_offset);
                 let area = 0.5 * height * (1.0 - x_offset);
 
                 let row = Flip::row(y, self.height);
-                self.coverage[row * self.stride + x] += carry + area;
-                carry = height - area;
+                self.coverage[row * self.stride + x] += area;
+                self.coverage[row * self.stride + x + 1] += height - area;
 
                 x += 1;
                 x_offset = 0.0;
@@ -375,7 +373,7 @@ impl Rasterizer {
             let area = 0.5 * height * (2.0 - x_offset - x_offset_end);
 
             let row = Flip::row(y, self.height);
-            self.coverage[row * self.stride + x] += carry + area;
+            self.coverage[row * self.stride + x] += area;
             self.coverage[row * self.stride + x + 1] += height - area;
             self.fill_cells::<A>(row, row_start, x + 2);
         })
