@@ -292,13 +292,13 @@ impl Rasterizer {
                 self.coverage[row * self.stride] += Flip::winding(y_offset_split - y_offset);
                 self.bitmasks[row * self.bitmasks_width] |= 1;
 
-                if x_end < 0 {
-                    return;
-                }
-
                 x = 0;
                 x_offset = 0.0;
                 y_offset = y_offset_split;
+            }
+
+            if x_end < 0 {
+                return;
             }
 
             if x_end >= self.width as i32 {
