@@ -228,19 +228,19 @@ impl Rasterizer {
             let dxdy = dx / dy;
             let dydx = dy / dx;
 
-            let mut y = p1.y.floor() as isize;
+            let mut y = p1.y.floor() as i32;
             let mut y_offset = p1.y - y as f32;
 
-            let mut y_end = p2.y.floor() as isize;
+            let mut y_end = p2.y.floor() as i32;
             let mut y_offset_end = p2.y - y_end as f32;
 
-            let mut x = p1.x.floor() as isize;
+            let mut x = p1.x.floor() as i32;
             let mut x_offset = p1.x - x as f32;
 
-            let mut x_end = p2.x.floor() as isize;
+            let mut x_end = p2.x.floor() as i32;
             let mut x_offset_end = p2.x - x_end as f32;
 
-            if y >= self.height as isize {
+            if y >= self.height as i32 {
                 return;
             }
 
@@ -250,23 +250,23 @@ impl Rasterizer {
 
             if y < 0 {
                 let clip_x = p1.x - dxdy * p1.y;
-                x = clip_x.floor() as isize;
+                x = clip_x.floor() as i32;
                 x_offset = clip_x - x as f32;
 
                 y = 0;
                 y_offset = 0.0;
             }
 
-            if y_end >= self.height as isize {
+            if y_end >= self.height as i32 {
                 let clip_x = p1.x + dxdy * (self.height as f32 - p1.y);
-                x_end = clip_x.floor() as isize;
+                x_end = clip_x.floor() as i32;
                 x_offset_end = clip_x - x as f32;
 
-                y_end = self.height as isize - 1;
+                y_end = self.height as i32 - 1;
                 y_offset_end = 1.0;
             }
 
-            if x >= self.width as isize {
+            if x >= self.width as i32 {
                 return;
             }
 
@@ -275,7 +275,7 @@ impl Rasterizer {
                 let mut y_offset_split = y_offset_end;
                 if x_end >= 0 {
                     let y_clip = p1.y - dydx * p1.x;
-                    y_split = (y_clip.floor() as isize).min(self.height as isize - 1);
+                    y_split = (y_clip.floor() as i32).min(self.height as i32 - 1);
                     y_offset_split = y_clip - y_split as f32;
                 }
 
@@ -301,32 +301,27 @@ impl Rasterizer {
                 y_offset = y_offset_split;
             }
 
-            if x_end >= self.width as isize {
-                x_end = self.width as isize - 1;
+            if x_end >= self.width as i32 {
+                x_end = self.width as i32 - 1;
                 x_offset_end = 1.0;
 
                 let clip_y = p2.y - dydx * (p2.x - self.width as f32);
-                y_end = clip_y.floor() as isize;
+                y_end = clip_y.floor() as i32;
                 y_offset_end = clip_y - y_end as f32;
             }
-
-            let mut x = x as usize;
-            let mut y = y as usize;
-            let x_end = x_end as usize;
-            let y_end = y_end as usize;
 
             let mut x_offset_next = x_offset + dxdy * (1.0 - y_offset);
             let mut y_offset_next = y_offset + dydx * (1.0 - x_offset);
 
             while y < y_end {
-                let row_start = x;
+                let row_start = x as usize;
                 while y_offset_next < 1.0 {
                     let height = Flip::winding(y_offset_next - y_offset);
                     let area = 0.5 * height * (1.0 - x_offset);
 
-                    let row = Flip::row(y, self.height);
-                    self.coverage[row * self.stride + x] += area;
-                    self.coverage[row * self.stride + x + 1] += height - area;
+                    let row = Flip::row(y as usize, self.height);
+                    self.coverage[row * self.stride + x as usize] += area;
+                    self.coverage[row * self.stride + x as usize + 1] += height - area;
 
                     x += 1;
                     x_offset = 0.0;
@@ -339,10 +334,10 @@ impl Rasterizer {
                 let height = Flip::winding(1.0 - y_offset);
                 let area = 0.5 * height * (2.0 - x_offset - x_offset_next);
 
-                let row = Flip::row(y, self.height);
-                self.coverage[row * self.stride + x] += area;
-                self.coverage[row * self.stride + x + 1] += height - area;
-                self.fill_cells::<A>(row, row_start, x + 2);
+                let row = Flip::row(y as usize, self.height);
+                self.coverage[row * self.stride + x as usize] += area;
+                self.coverage[row * self.stride + x as usize + 1] += height - area;
+                self.fill_cells::<A>(row, row_start, x as usize + 2);
 
                 x_offset = x_offset_next;
                 x_offset_next += dxdy;
@@ -352,14 +347,14 @@ impl Rasterizer {
                 y_offset_next -= 1.0;
             }
 
-            let row_start = x;
+            let row_start = x as usize;
             while x < x_end {
                 let height = Flip::winding(y_offset_next - y_offset);
                 let area = 0.5 * height * (1.0 - x_offset);
 
-                let row = Flip::row(y, self.height);
-                self.coverage[row * self.stride + x] += area;
-                self.coverage[row * self.stride + x + 1] += height - area;
+                let row = Flip::row(y as usize, self.height);
+                self.coverage[row * self.stride + x as usize] += area;
+                self.coverage[row * self.stride + x as usize + 1] += height - area;
 
                 x += 1;
                 x_offset = 0.0;
@@ -372,10 +367,10 @@ impl Rasterizer {
             let height = Flip::winding(y_offset_end - y_offset);
             let area = 0.5 * height * (2.0 - x_offset - x_offset_end);
 
-            let row = Flip::row(y, self.height);
-            self.coverage[row * self.stride + x] += area;
-            self.coverage[row * self.stride + x + 1] += height - area;
-            self.fill_cells::<A>(row, row_start, x + 2);
+            let row = Flip::row(y as usize, self.height);
+            self.coverage[row * self.stride + x as usize] += area;
+            self.coverage[row * self.stride + x as usize + 1] += height - area;
+            self.fill_cells::<A>(row, row_start, x as usize + 2);
         })
     }
 
