@@ -1,4 +1,5 @@
 use crate::color::Color;
+use crate::flatten::{flatten, stroke};
 use crate::geom::{Transform, Vec2};
 use crate::path::Path;
 use crate::raster::{Rasterizer, Segment};
@@ -79,11 +80,9 @@ impl Canvas {
 
         self.rasterizer.set_size(path_width, path_height);
 
-        for segment in path.segments() {
-            segment.flatten(transform, |p1, p2| {
-                self.add_segment(p1 - offset, p2 - offset);
-            });
-        }
+        flatten(&path, transform, &mut |p1, p2| {
+            self.add_segment(p1 - offset, p2 - offset);
+        });
 
         self.drain_segments();
 
@@ -93,7 +92,41 @@ impl Canvas {
     }
 
     pub fn stroke_path(&mut self, path: &Path, width: f32, transform: &Transform, color: Color) {
-        self.fill_path(&path.stroke(width, transform), &Transform::id(), color);
+        if path.is_empty() {
+            return;
+        }
+
+        let (min, max) = path.bounds(transform);
+
+        let dilate = width * Vec2::new(0.5, 0.5);
+        let min = min - dilate;
+        let max = max + dilate;
+
+        let min_x = (min.x as isize).max(0).min(self.width as isize) as usize;
+        let min_y = (min.y as isize).max(0).min(self.width as isize) as usize;
+        let max_x = ((max.x + 1.0) as isize).max(0).min(self.width as isize) as usize;
+        let max_y = ((max.y + 1.0) as isize).max(0).min(self.height as isize) as usize;
+
+        if max_x <= min_x || max_y <= min_y {
+            return;
+        }
+
+        let path_width = max_x - min_x;
+        let path_height = max_y - min_y;
+
+        let offset = Vec2::new(min_x as f32, min_y as f32);
+
+        self.rasterizer.set_size(path_width, path_height);
+
+        stroke(&path, width, transform, &mut |p1, p2| {
+            self.add_segment(p1 - offset, p2 - offset);
+        });
+
+        self.drain_segments();
+
+        let data_start = min_y * self.width + min_x;
+        self.rasterizer
+            .finish(color, &mut self.data[data_start..], self.width);
     }
 
     pub fn fill_text(

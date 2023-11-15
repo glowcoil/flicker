@@ -1,5 +1,6 @@
 mod canvas;
 mod color;
+mod flatten;
 mod geom;
 mod path;
 mod raster;
