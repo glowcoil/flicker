@@ -1,7 +1,7 @@
 use crate::geom::{Transform, Vec2};
 use crate::path::{Path, Verb};
 
-const TOLERANCE: f32 = 0.1;
+const TOLERANCE: f32 = 0.2;
 
 trait Curve {
     fn transform(&self, transform: &Transform) -> Self;
