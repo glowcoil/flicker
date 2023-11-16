@@ -62,10 +62,16 @@ impl Canvas {
             return;
         }
 
-        let (min, max) = path.bounds(transform);
+        let mut min = Vec2::new(self.width as f32, self.height as f32);
+        let mut max = Vec2::new(0.0, 0.0);
+        for &point in &path.points {
+            let transformed = transform.apply(point);
+            min = min.min(transformed);
+            max = max.max(transformed);
+        }
 
         let min_x = (min.x as isize).max(0).min(self.width as isize) as usize;
-        let min_y = (min.y as isize).max(0).min(self.width as isize) as usize;
+        let min_y = (min.y as isize).max(0).min(self.height as isize) as usize;
         let max_x = ((max.x + 1.0) as isize).max(0).min(self.width as isize) as usize;
         let max_y = ((max.y + 1.0) as isize).max(0).min(self.height as isize) as usize;
 
@@ -96,14 +102,25 @@ impl Canvas {
             return;
         }
 
-        let (min, max) = path.bounds(transform);
+        let dilate_x = transform.matrix * width * Vec2::new(0.5, 0.0);
+        let dilate_y = transform.matrix * width * Vec2::new(0.0, 0.5);
 
-        let dilate = width * Vec2::new(0.5, 0.5);
-        let min = min - dilate;
-        let max = max + dilate;
+        let mut min = Vec2::new(self.width as f32, self.height as f32);
+        let mut max = Vec2::new(0.0, 0.0);
+        for &point in &path.points {
+            let transformed = transform.apply(point);
+
+            let dilate0 = transformed - dilate_x - dilate_y;
+            let dilate1 = transformed + dilate_x - dilate_y;
+            let dilate2 = transformed - dilate_x + dilate_y;
+            let dilate3 = transformed + dilate_x + dilate_y;
+
+            min = min.min(dilate0).min(dilate1).min(dilate2).min(dilate3);
+            max = max.max(dilate0).max(dilate1).max(dilate2).max(dilate3);
+        }
 
         let min_x = (min.x as isize).max(0).min(self.width as isize) as usize;
-        let min_y = (min.y as isize).max(0).min(self.width as isize) as usize;
+        let min_y = (min.y as isize).max(0).min(self.height as isize) as usize;
         let max_x = ((max.x + 1.0) as isize).max(0).min(self.width as isize) as usize;
         let max_y = ((max.y + 1.0) as isize).max(0).min(self.height as isize) as usize;
 

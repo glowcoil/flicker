@@ -39,24 +39,6 @@ impl Path {
     }
 
     #[inline]
-    pub fn bounds(&self, transform: &Transform) -> (Vec2, Vec2) {
-        if self.is_empty() {
-            return (Vec2::new(0.0, 0.0), Vec2::new(0.0, 0.0));
-        }
-
-        let first = transform.apply(*self.points.first().unwrap());
-        let mut min = first;
-        let mut max = first;
-        for &point in self.points[1..].iter() {
-            let transformed = transform.apply(point);
-            min = min.min(transformed);
-            max = max.max(transformed);
-        }
-
-        (min, max)
-    }
-
-    #[inline]
     pub fn move_to(&mut self, point: Vec2) -> &mut Self {
         self.verbs.push(Verb::Move);
         self.points.push(point);

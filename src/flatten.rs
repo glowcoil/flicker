@@ -280,78 +280,6 @@ pub fn flatten(path: &Path, transform: &Transform, sink: &mut impl FnMut(Vec2, V
     }
 }
 
-// #[inline]
-// fn join(
-//     width: f32,
-//     prev_normal: Vec2,
-//     next_normal: Vec2,
-//     point: Vec2,
-//     sink: &mut impl FnMut(Vec2, Vec2),
-// ) {
-//     let offset = 1.0 / (1.0 + prev_normal.dot(next_normal));
-//     if offset.abs() > 2.0 {
-//         let mid = point + 0.5 * width * prev_normal;
-//         let end = point + 0.5 * width * next_normal;
-//         sink(point, mid);
-//         sink(mid, end);
-//     } else {
-//         sink(
-//             point,
-//             point + 0.5 * width * offset * (prev_normal + next_normal),
-//         );
-//     }
-// }
-
-// #[inline]
-// fn offset(
-//     width: f32,
-//     contour: &[Vec2],
-//     closed: bool,
-//     reverse: bool,
-//     sink: &mut impl FnMut(Vec2, Vec2),
-// ) {
-//     let first_point = if closed == reverse {
-//         contour[0]
-//     } else {
-//         *contour.last().unwrap()
-//     };
-//     let mut prev_point = first_point;
-//     let mut prev_normal = Vec2::new(0.0, 0.0);
-//     let mut i = 0;
-//     loop {
-//         let next_point = if i < contour.len() {
-//             if reverse {
-//                 contour[contour.len() - i - 1]
-//             } else {
-//                 contour[i]
-//             }
-//         } else {
-//             first_point
-//         };
-
-//         if next_point != prev_point || i == contour.len() {
-//             let next_tangent = next_point - prev_point;
-//             let next_normal = Vec2::new(-next_tangent.y, next_tangent.x);
-//             let next_normal_len = next_normal.length();
-//             let next_normal = if next_normal_len == 0.0 {
-//                 Vec2::new(0.0, 0.0)
-//             } else {
-//                 next_normal * (1.0 / next_normal_len)
-//             };
-
-//             join(width, prev_normal, next_normal, prev_point, sink);
-
-//             prev_point = next_point;
-//             prev_normal = next_normal;
-//         }
-
-//         i += 1;
-//         if i > contour.len() {
-//             break;
-//         }
-//     }
-// }
-
 struct Stroker<S> {
     width: f32,
     transform: Transform,
@@ -406,10 +334,10 @@ impl<S: FnMut(Vec2, Vec2)> Stroker<S> {
         let dt = 1.0 / segments as f32;
 
         let start = curve_transformed.start();
-        let start_tangent = curve.tangent(dt);
+        let start_tangent = curve.tangent(dt.min(0.5));
         let start_normal = Vec2::new(-start_tangent.y, start_tangent.x);
         let normal_len = start_normal.length();
-        let offset = if normal_len.abs() < 1e-3 {
+        let offset = if normal_len.abs() < 1e-6 {
             Vec2::new(0.0, 0.0)
         } else {
             0.5 * self.width * (1.0 / normal_len) * start_normal
@@ -429,14 +357,17 @@ impl<S: FnMut(Vec2, Vec2)> Stroker<S> {
         self.prev_right = right;
         self.prev_left = left;
 
-
         let mut t = dt;
         for _ in 0..segments {
             let point = curve_transformed.eval(t);
             let tangent = curve.tangent(t.min(1.0 - dt));
             let normal = Vec2::new(-tangent.y, tangent.x);
             let normal_len = normal.length();
-            let offset = 0.5 * self.width * (1.0 / normal_len) * normal;
+            let offset = if normal_len.abs() < 1e-6 {
+                Vec2::new(0.0, 0.0)
+            } else {
+                0.5 * self.width * (1.0 / normal_len) * normal
+            };
             let offset_transformed = self.transform.matrix * offset;
             let right = point + offset_transformed;
             let left = point - offset_transformed;
