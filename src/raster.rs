@@ -24,7 +24,10 @@ impl<A: Arch> Consts<A> {
 
 struct Methods {
     bitmask_count_for_width: fn(width: usize) -> usize,
-    add_segments: fn(&mut Rasterizer, segments: &[Segment]),
+    add_segments_px_py: fn(&mut Rasterizer, segments: &[Segment]),
+    add_segments_px_ny: fn(&mut Rasterizer, segments: &[Segment]),
+    add_segments_nx_py: fn(&mut Rasterizer, segments: &[Segment]),
+    add_segments_nx_ny: fn(&mut Rasterizer, segments: &[Segment]),
     finish: fn(&mut Rasterizer, color: Color, data: &mut [u32], stride: usize),
 }
 
@@ -38,7 +41,10 @@ impl Methods {
             fn run<A: Arch>(self) -> Methods {
                 Methods {
                     bitmask_count_for_width: bitmask_count_for_width::<A>,
-                    add_segments: Rasterizer::add_segments_inner::<A>,
+                    add_segments_px_py: Rasterizer::add_segments_inner_px_py::<A>,
+                    add_segments_px_ny: Rasterizer::add_segments_inner_px_ny::<A>,
+                    add_segments_nx_py: Rasterizer::add_segments_inner_nx_py::<A>,
+                    add_segments_nx_ny: Rasterizer::add_segments_inner_nx_ny::<A>,
                     finish: Rasterizer::finish_inner::<A>,
                 }
             }
@@ -194,26 +200,50 @@ impl Rasterizer {
         self.height = height;
     }
 
-    pub fn add_segments(&mut self, segments: &[Segment]) {
-        (self.methods.add_segments)(self, segments)
+    pub fn add_segments_px_py(&mut self, segments: &[Segment]) {
+        (self.methods.add_segments_px_py)(self, segments)
     }
 
-    fn add_segments_inner<A: Arch>(&mut self, segments: &[Segment]) {
+    pub fn add_segments_nx_py(&mut self, segments: &[Segment]) {
+        (self.methods.add_segments_nx_py)(self, segments)
+    }
+
+    pub fn add_segments_px_ny(&mut self, segments: &[Segment]) {
+        (self.methods.add_segments_px_ny)(self, segments)
+    }
+
+    pub fn add_segments_nx_ny(&mut self, segments: &[Segment]) {
+        (self.methods.add_segments_nx_ny)(self, segments)
+    }
+
+    fn add_segments_inner_px_py<A: Arch>(&mut self, segments: &[Segment]) {
         invoke!(A, {
             for segment in segments {
-                if segment.p1.x < segment.p2.x {
-                    if segment.p1.y < segment.p2.y {
-                        self.add_segment::<A, PosXPosY>(segment.p1, segment.p2);
-                    } else {
-                        self.add_segment::<A, PosXNegY>(segment.p1, segment.p2);
-                    }
-                } else {
-                    if segment.p1.y < segment.p2.y {
-                        self.add_segment::<A, NegXPosY>(segment.p2, segment.p1);
-                    } else {
-                        self.add_segment::<A, NegXNegY>(segment.p2, segment.p1);
-                    }
-                }
+                self.add_segment::<A, PosXPosY>(segment.p1, segment.p2);
+            }
+        })
+    }
+
+    fn add_segments_inner_px_ny<A: Arch>(&mut self, segments: &[Segment]) {
+        invoke!(A, {
+            for segment in segments {
+                self.add_segment::<A, PosXNegY>(segment.p1, segment.p2);
+            }
+        })
+    }
+
+    fn add_segments_inner_nx_py<A: Arch>(&mut self, segments: &[Segment]) {
+        invoke!(A, {
+            for segment in segments {
+                self.add_segment::<A, NegXPosY>(segment.p2, segment.p1);
+            }
+        })
+    }
+
+    fn add_segments_inner_nx_ny<A: Arch>(&mut self, segments: &[Segment]) {
+        invoke!(A, {
+            for segment in segments {
+                self.add_segment::<A, NegXNegY>(segment.p2, segment.p1);
             }
         })
     }

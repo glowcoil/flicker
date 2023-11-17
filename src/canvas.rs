@@ -5,13 +5,16 @@ use crate::path::Path;
 use crate::raster::{Rasterizer, Segment};
 use crate::text::Font;
 
-const MAX_SEGMENTS: usize = 256;
+const MAX_SEGMENTS: usize = 64;
 
 pub struct Canvas {
     width: usize,
     height: usize,
     data: Vec<u32>,
-    segments: Vec<Segment>,
+    segments_px_py: Vec<Segment>,
+    segments_px_ny: Vec<Segment>,
+    segments_nx_py: Vec<Segment>,
+    segments_nx_ny: Vec<Segment>,
     rasterizer: Rasterizer,
 }
 
@@ -21,7 +24,10 @@ impl Canvas {
             width,
             height,
             data: vec![0xFF000000; width * height],
-            segments: Vec::with_capacity(MAX_SEGMENTS),
+            segments_px_py: Vec::with_capacity(MAX_SEGMENTS),
+            segments_px_ny: Vec::with_capacity(MAX_SEGMENTS),
+            segments_nx_py: Vec::with_capacity(MAX_SEGMENTS),
+            segments_nx_ny: Vec::with_capacity(MAX_SEGMENTS),
             rasterizer: Rasterizer::with_size(width, height),
         }
     }
@@ -45,16 +51,53 @@ impl Canvas {
     }
 
     fn add_segment(&mut self, p1: Vec2, p2: Vec2) {
-        self.segments.push(Segment { p1, p2 });
-
-        if self.segments.len() == self.segments.capacity() {
-            self.drain_segments();
+        if p1.x < p2.x {
+            if p1.y < p2.y {
+                self.segments_px_py.push(Segment { p1, p2 });
+                // if self.segments_px_py.len() == self.segments_px_py.capacity() {
+                //     self.rasterizer.add_segments_px_py(&self.segments_px_py);
+                //     self.segments_px_py.clear();
+                // }
+            } else {
+                self.segments_px_ny.push(Segment { p1, p2 });
+                // if self.segments_px_ny.len() == self.segments_px_ny.capacity() {
+                //     self.rasterizer.add_segments_px_ny(&self.segments_px_ny);
+                //     self.segments_px_ny.clear();
+                // }
+            }
+        } else {
+            if p1.y < p2.y {
+                self.segments_nx_py.push(Segment { p1, p2 });
+                // if self.segments_nx_py.len() == self.segments_nx_py.capacity() {
+                //     self.rasterizer.add_segments_nx_py(&self.segments_nx_py);
+                //     self.segments_nx_py.clear();
+                // }
+            } else {
+                self.segments_nx_ny.push(Segment { p1, p2 });
+                // if self.segments_nx_ny.len() == self.segments_nx_ny.capacity() {
+                //     self.rasterizer.add_segments_nx_ny(&self.segments_nx_ny);
+                //     self.segments_nx_ny.clear();
+                // }
+            }
         }
+
+        // if self.segments.len() == self.segments.capacity() {
+        //     self.drain_segments();
+        // }
     }
 
     fn drain_segments(&mut self) {
-        self.rasterizer.add_segments(&self.segments);
-        self.segments.clear();
+        self.rasterizer.add_segments_px_py(&self.segments_px_py);
+        self.segments_px_py.clear();
+
+        self.rasterizer.add_segments_px_ny(&self.segments_px_ny);
+        self.segments_px_ny.clear();
+
+        self.rasterizer.add_segments_nx_py(&self.segments_nx_py);
+        self.segments_nx_py.clear();
+
+        self.rasterizer.add_segments_nx_ny(&self.segments_nx_ny);
+        self.segments_nx_ny.clear();
     }
 
     pub fn fill_path(&mut self, path: &Path, transform: &Transform, color: Color) {
