@@ -6,8 +6,7 @@ edition = "2021"
 publish = false
 
 [dependencies]
-swash = { version = "0.1.4", features = ["scale"], default_features = false }
-zeno = "0.2.2"
+rustybuzz = "0.11.0"
 
 [dev-dependencies]
 svg = { path = "svg" }

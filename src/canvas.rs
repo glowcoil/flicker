@@ -152,63 +152,69 @@ impl Canvas {
         transform: &Transform,
         color: Color,
     ) {
-        use swash::scale::*;
-        use swash::shape::*;
-        use zeno::*;
+        use rustybuzz::ttf_parser::{GlyphId, OutlineBuilder};
+        use rustybuzz::UnicodeBuffer;
+        use std::iter::zip;
 
-        let mut shape_context = ShapeContext::new();
-        let mut shaper = shape_context.builder(font.as_ref()).size(size).build();
+        struct Builder {
+            path: Path,
+            ascent: f32,
+        }
 
-        let mut scale_context = ScaleContext::new();
-        let mut scaler = scale_context.builder(font.as_ref()).size(size).build();
-
-        let mut offset = 1.0;
-        shaper.add_str(text);
-        shaper.shape_with(|cluster| {
-            for glyph in cluster.glyphs {
-                if let Some(outline) = scaler.scale_outline(glyph.id) {
-                    let mut path = Path::new();
-
-                    let mut points = outline.points().iter();
-                    for verb in outline.verbs() {
-                        match verb {
-                            Verb::MoveTo => {
-                                let point = points.next().unwrap();
-                                path.move_to(Vec2::new(point.x + offset, -point.y + size));
-                            }
-                            Verb::LineTo => {
-                                let point = points.next().unwrap();
-                                path.line_to(Vec2::new(point.x + offset, -point.y + size));
-                            }
-                            Verb::CurveTo => {
-                                let control1 = points.next().unwrap();
-                                let control2 = points.next().unwrap();
-                                let point = points.next().unwrap();
-                                path.cubic_to(
-                                    Vec2::new(control1.x + offset, -control1.y + size),
-                                    Vec2::new(control2.x + offset, -control2.y + size),
-                                    Vec2::new(point.x + offset, -point.y + size),
-                                );
-                            }
-                            Verb::QuadTo => {
-                                let control = points.next().unwrap();
-                                let point = points.next().unwrap();
-                                path.quadratic_to(
-                                    Vec2::new(control.x + offset, -control.y + size),
-                                    Vec2::new(point.x + offset, -point.y + size),
-                                );
-                            }
-                            Verb::Close => {
-                                path.close();
-                            }
-                        }
-                    }
-
-                    self.fill_path(&path, transform, color);
-
-                    offset += glyph.advance;
-                }
+        impl OutlineBuilder for Builder {
+            fn move_to(&mut self, x: f32, y: f32) {
+                self.path.move_to(Vec2::new(x, self.ascent - y));
             }
-        });
+
+            fn line_to(&mut self, x: f32, y: f32) {
+                self.path.line_to(Vec2::new(x, self.ascent - y));
+            }
+
+            fn quad_to(&mut self, x1: f32, y1: f32, x: f32, y: f32) {
+                self.path.quadratic_to(
+                    Vec2::new(x1, self.ascent - y1),
+                    Vec2::new(x, self.ascent - y),
+                );
+            }
+
+            fn curve_to(&mut self, x1: f32, y1: f32, x2: f32, y2: f32, x: f32, y: f32) {
+                self.path.cubic_to(
+                    Vec2::new(x1, self.ascent - y1),
+                    Vec2::new(x2, self.ascent - y2),
+                    Vec2::new(x, self.ascent - y),
+                );
+            }
+
+            fn close(&mut self) {
+                self.path.close();
+            }
+        }
+
+        let mut buf = UnicodeBuffer::new();
+        buf.push_str(text);
+
+        let scale = size / font.face.units_per_em() as f32;
+
+        let glyphs = rustybuzz::shape(&font.face, &[], buf);
+
+        let mut offset = 0.0;
+        for (info, glyph_pos) in zip(glyphs.glyph_infos(), glyphs.glyph_positions()) {
+            let mut builder = Builder {
+                path: Path::new(),
+                ascent: font.face.ascender() as f32,
+            };
+            let glyph_id = GlyphId(info.glyph_id as u16);
+            font.face.outline_glyph(glyph_id, &mut builder);
+
+            let transform = Transform::translate(
+                offset + glyph_pos.x_offset as f32,
+                glyph_pos.y_offset as f32,
+            )
+            .then(Transform::scale(scale))
+            .then(*transform);
+            self.fill_path(&builder.path, &transform, color);
+
+            offset += glyph_pos.x_advance as f32;
+        }
     }
 }
