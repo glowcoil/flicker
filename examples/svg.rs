@@ -101,16 +101,14 @@ impl State {
                     Color::rgba(0, 0, 0, 255),
                 );
 
-                cx.window()
-                    .present(Bitmap::new(canvas.data(), canvas.width(), canvas.height()));
+                cx.window().present(Bitmap::new(canvas.data(), canvas.width(), canvas.height()));
             }
             Event::MouseMove(pos) => {
                 if self.dragging {
                     let prev = Vec2::new(self.mouse_pos.x as f32, self.mouse_pos.y as f32);
                     let curr = Vec2::new(pos.x as f32, pos.y as f32);
-                    self.transform = self
-                        .transform
-                        .then(Transform::translate(curr.x - prev.x, curr.y - prev.y));
+                    self.transform =
+                        self.transform.then(Transform::translate(curr.x - prev.x, curr.y - prev.y));
                 }
 
                 self.mouse_pos = pos;
@@ -153,10 +151,7 @@ impl State {
 
 fn main() {
     let path_arg = std::env::args().nth(1);
-    let path = path_arg
-        .as_ref()
-        .map(|s| &s[..])
-        .unwrap_or("examples/res/tiger.svg");
+    let path = path_arg.as_ref().map(|s| &s[..]).unwrap_or("examples/res/tiger.svg");
     let commands = svg::from_file(path).unwrap();
 
     let app = App::new().unwrap();

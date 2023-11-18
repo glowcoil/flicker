@@ -93,8 +93,7 @@ impl Canvas {
         self.drain_segments();
 
         let data_start = min_y * self.width + min_x;
-        self.rasterizer
-            .finish(color, &mut self.data[data_start..], self.width);
+        self.rasterizer.finish(color, &mut self.data[data_start..], self.width);
     }
 
     pub fn stroke_path(&mut self, path: &Path, width: f32, transform: &Transform, color: Color) {
@@ -142,8 +141,7 @@ impl Canvas {
         self.drain_segments();
 
         let data_start = min_y * self.width + min_x;
-        self.rasterizer
-            .finish(color, &mut self.data[data_start..], self.width);
+        self.rasterizer.finish(color, &mut self.data[data_start..], self.width);
     }
 
     pub fn fill_text(

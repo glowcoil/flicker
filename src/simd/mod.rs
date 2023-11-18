@@ -132,10 +132,8 @@ mod tests {
             for chunk_a in values.chunks(A::f32::LANES) {
                 for chunk_b in values.chunks(A::f32::LANES) {
                     let result = A::f32::load(chunk_a) + A::f32::load(chunk_b);
-                    for ((&a, &b), &c) in chunk_a
-                        .iter()
-                        .zip(chunk_b.iter())
-                        .zip(result.as_slice().iter())
+                    for ((&a, &b), &c) in
+                        chunk_a.iter().zip(chunk_b.iter()).zip(result.as_slice().iter())
                     {
                         let correct = a + b;
                         assert!(
@@ -145,10 +143,8 @@ mod tests {
                     }
 
                     let result = A::f32::load(chunk_a) - A::f32::load(chunk_b);
-                    for ((&a, &b), &c) in chunk_a
-                        .iter()
-                        .zip(chunk_b.iter())
-                        .zip(result.as_slice().iter())
+                    for ((&a, &b), &c) in
+                        chunk_a.iter().zip(chunk_b.iter()).zip(result.as_slice().iter())
                     {
                         let correct = a - b;
                         assert!(
@@ -158,10 +154,8 @@ mod tests {
                     }
 
                     let result = A::f32::load(chunk_a) * A::f32::load(chunk_b);
-                    for ((&a, &b), &c) in chunk_a
-                        .iter()
-                        .zip(chunk_b.iter())
-                        .zip(result.as_slice().iter())
+                    for ((&a, &b), &c) in
+                        chunk_a.iter().zip(chunk_b.iter()).zip(result.as_slice().iter())
                     {
                         let correct = a * b;
                         assert!(
@@ -171,10 +165,8 @@ mod tests {
                     }
 
                     let result = A::f32::load(chunk_a) / A::f32::load(chunk_b);
-                    for ((&a, &b), &c) in chunk_a
-                        .iter()
-                        .zip(chunk_b.iter())
-                        .zip(result.as_slice().iter())
+                    for ((&a, &b), &c) in
+                        chunk_a.iter().zip(chunk_b.iter()).zip(result.as_slice().iter())
                     {
                         let correct = a / b;
                         assert!(
@@ -184,10 +176,8 @@ mod tests {
                     }
 
                     let result = A::f32::load(chunk_a).min(A::f32::load(chunk_b));
-                    for ((&a, &b), &c) in chunk_a
-                        .iter()
-                        .zip(chunk_b.iter())
-                        .zip(result.as_slice().iter())
+                    for ((&a, &b), &c) in
+                        chunk_a.iter().zip(chunk_b.iter()).zip(result.as_slice().iter())
                     {
                         let correct = if a < b { a } else { b };
                         assert!(
@@ -245,11 +235,8 @@ mod tests {
                     accum += *x;
                     *x = accum;
                 }
-                let equal = result
-                    .as_slice()
-                    .iter()
-                    .zip(correct.as_slice().iter())
-                    .all(|(a, b)| a == b);
+                let equal =
+                    result.as_slice().iter().zip(correct.as_slice().iter()).all(|(a, b)| a == b);
                 assert!(equal, "prefix_sum() failed\n   input: {chunk:?}\nexpected: {correct:?}\n     got: {result:?}");
             }
 
@@ -324,20 +311,16 @@ mod tests {
             for chunk_a in values.chunks(A::u32::LANES) {
                 for chunk_b in values.chunks(A::u32::LANES) {
                     let result = A::u32::load(chunk_a) & A::u32::load(chunk_b);
-                    for ((&a, &b), &c) in chunk_a
-                        .iter()
-                        .zip(chunk_b.iter())
-                        .zip(result.as_slice().iter())
+                    for ((&a, &b), &c) in
+                        chunk_a.iter().zip(chunk_b.iter()).zip(result.as_slice().iter())
                     {
                         let correct = a & b;
                         assert!(correct == c, "expected {a} & {b} == {correct}, got {c}");
                     }
 
                     let result = A::u32::load(chunk_a) | A::u32::load(chunk_b);
-                    for ((&a, &b), &c) in chunk_a
-                        .iter()
-                        .zip(chunk_b.iter())
-                        .zip(result.as_slice().iter())
+                    for ((&a, &b), &c) in
+                        chunk_a.iter().zip(chunk_b.iter()).zip(result.as_slice().iter())
                     {
                         let correct = a | b;
                         assert!(correct == c, "expected {a} | {b} == {correct}, got {c}");
