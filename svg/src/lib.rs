@@ -1,7 +1,7 @@
 use std::error::Error;
 use std::path;
 
-use flicker::{Canvas, Color, Mat2x2, Path, Transform, Vec2};
+use flicker::{Color, Mat2x2, Path, RenderContext, Transform, Vec2};
 
 pub enum Style {
     Fill,
@@ -94,14 +94,14 @@ fn build_list(node: &usvg::Node, commands: &mut Vec<Command>) {
     }
 }
 
-pub fn render(commands: &[Command], transform: &Transform, canvas: &mut Canvas) {
+pub fn render(commands: &[Command], transform: &Transform, context: &mut RenderContext) {
     for command in commands {
         match command.style {
             Style::Fill => {
-                canvas.fill_path(&command.path, transform, command.color);
+                context.fill_path(&command.path, transform, command.color);
             }
             Style::Stroke(width) => {
-                canvas.stroke_path(&command.path, width, transform, command.color);
+                context.stroke_path(&command.path, width, transform, command.color);
             }
         }
     }

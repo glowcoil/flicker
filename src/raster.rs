@@ -170,28 +170,36 @@ fn bitmask_count_for_width<A: Arch>(width: usize) -> usize {
 }
 
 impl Rasterizer {
-    pub fn with_size(width: usize, height: usize) -> Rasterizer {
+    pub fn new() -> Rasterizer {
         let methods = Methods::specialize();
-
-        let stride = width + 1;
-        let bitmasks_width = (methods.bitmask_count_for_width)(stride);
 
         Rasterizer {
             methods,
-            width,
-            stride,
-            height,
-            coverage: vec![0.0; stride * height],
-            bitmasks_width,
-            bitmasks: vec![0; bitmasks_width * height],
+            width: 0,
+            stride: 0,
+            height: 0,
+            coverage: Vec::new(),
+            bitmasks_width: 0,
+            bitmasks: Vec::new(),
         }
     }
 
     pub fn set_size(&mut self, width: usize, height: usize) {
         self.width = width;
         self.stride = width + 1;
-        self.bitmasks_width = (self.methods.bitmask_count_for_width)(self.stride);
         self.height = height;
+
+        let coverage_size = self.stride * self.height;
+        if self.coverage.len() < coverage_size {
+            self.coverage.resize(coverage_size, 0.0);
+        }
+
+        self.bitmasks_width = (self.methods.bitmask_count_for_width)(self.stride);
+
+        let bitmasks_size = self.bitmasks_width * self.height;
+        if self.bitmasks.len() < bitmasks_size {
+            self.bitmasks.resize(bitmasks_size, 0);
+        }
     }
 
     pub fn add_segments(&mut self, segments: &[Segment]) {

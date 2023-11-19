@@ -7,35 +7,50 @@ use crate::text::Font;
 
 const MAX_SEGMENTS: usize = 256;
 
-pub struct Canvas {
-    width: usize,
-    height: usize,
-    data: Vec<u32>,
+pub struct Renderer {
     segments: Vec<Segment>,
     rasterizer: Rasterizer,
 }
 
-impl Canvas {
-    pub fn with_size(width: usize, height: usize) -> Canvas {
-        Canvas {
-            width,
-            height,
-            data: vec![0xFF000000; width * height],
+impl Renderer {
+    pub fn new() -> Renderer {
+        Renderer {
             segments: Vec::with_capacity(MAX_SEGMENTS),
-            rasterizer: Rasterizer::with_size(width, height),
+            rasterizer: Rasterizer::new(),
         }
     }
 
+    pub fn context<'a>(
+        &'a mut self,
+        data: &'a mut [u32],
+        width: usize,
+        height: usize,
+    ) -> RenderContext<'a> {
+        assert!(data.len() == width * height);
+
+        RenderContext {
+            renderer: self,
+            data,
+            width,
+            height,
+        }
+    }
+}
+
+pub struct RenderContext<'a> {
+    renderer: &'a mut Renderer,
+    data: &'a mut [u32],
+    width: usize,
+    height: usize,
+}
+
+impl<'a> RenderContext<'a> {
     pub fn width(&self) -> usize {
         self.width
     }
 
     pub fn height(&self) -> usize {
         self.height
-    }
-
-    pub fn data(&self) -> &[u32] {
-        &self.data[0..self.width * self.height]
     }
 
     pub fn clear(&mut self, color: Color) {
@@ -45,16 +60,16 @@ impl Canvas {
     }
 
     fn add_segment(&mut self, p1: Vec2, p2: Vec2) {
-        self.segments.push(Segment { p1, p2 });
+        self.renderer.segments.push(Segment { p1, p2 });
 
-        if self.segments.len() == self.segments.capacity() {
+        if self.renderer.segments.len() == self.renderer.segments.capacity() {
             self.drain_segments();
         }
     }
 
     fn drain_segments(&mut self) {
-        self.rasterizer.add_segments(&self.segments);
-        self.segments.clear();
+        self.renderer.rasterizer.add_segments(&self.renderer.segments);
+        self.renderer.segments.clear();
     }
 
     pub fn fill_path(&mut self, path: &Path, transform: &Transform, color: Color) {
@@ -84,7 +99,7 @@ impl Canvas {
 
         let offset = Vec2::new(min_x as f32, min_y as f32);
 
-        self.rasterizer.set_size(path_width, path_height);
+        self.renderer.rasterizer.set_size(path_width, path_height);
 
         flatten(&path, transform, &mut |p1, p2| {
             self.add_segment(p1 - offset, p2 - offset);
@@ -93,7 +108,7 @@ impl Canvas {
         self.drain_segments();
 
         let data_start = min_y * self.width + min_x;
-        self.rasterizer.finish(color, &mut self.data[data_start..], self.width);
+        self.renderer.rasterizer.finish(color, &mut self.data[data_start..], self.width);
     }
 
     pub fn stroke_path(&mut self, path: &Path, width: f32, transform: &Transform, color: Color) {
@@ -132,7 +147,7 @@ impl Canvas {
 
         let offset = Vec2::new(min_x as f32, min_y as f32);
 
-        self.rasterizer.set_size(path_width, path_height);
+        self.renderer.rasterizer.set_size(path_width, path_height);
 
         stroke(&path, width, transform, &mut |p1, p2| {
             self.add_segment(p1 - offset, p2 - offset);
@@ -141,7 +156,7 @@ impl Canvas {
         self.drain_segments();
 
         let data_start = min_y * self.width + min_x;
-        self.rasterizer.finish(color, &mut self.data[data_start..], self.width);
+        self.renderer.rasterizer.finish(color, &mut self.data[data_start..], self.width);
     }
 
     pub fn fill_text(

@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use flicker::{Canvas, Color, Font, Transform, Vec2};
+use flicker::{Color, Font, Renderer, Transform, Vec2};
 use portlight::{
     App, Bitmap, Event, MouseButton, Point, Response, Size, WindowContext, WindowOptions,
 };
@@ -47,7 +47,8 @@ impl FrameTimer {
 }
 
 struct State {
-    canvas: Option<Canvas>,
+    renderer: Renderer,
+    framebuffer: Vec<u32>,
     font: Font,
     commands: Vec<svg::Command>,
     timer: FrameTimer,
@@ -59,7 +60,8 @@ struct State {
 impl State {
     fn new(commands: Vec<svg::Command>) -> State {
         State {
-            canvas: None,
+            renderer: Renderer::new(),
+            framebuffer: Vec::new(),
             font: Font::from_bytes(include_bytes!("res/SourceSansPro-Regular.otf"), 0).unwrap(),
             commands,
             timer: FrameTimer::new(),
@@ -73,27 +75,26 @@ impl State {
         match event {
             Event::Frame => {
                 let scale = cx.window().scale();
-                let width = WIDTH as f64 * scale;
-                let height = HEIGHT as f64 * scale;
+                let width = (WIDTH as f64 * scale) as usize;
+                let height = (HEIGHT as f64 * scale) as usize;
 
-                if self.canvas.is_none() {
-                    self.canvas = Some(Canvas::with_size(width as usize, height as usize));
-                }
-                let canvas = self.canvas.as_mut().unwrap();
+                self.framebuffer.resize(width as usize * height as usize, 0xFF000000);
 
-                canvas.clear(Color::rgba(255, 255, 255, 255));
+                let mut context = self.renderer.context(&mut self.framebuffer, width, height);
+
+                context.clear(Color::rgba(255, 255, 255, 255));
 
                 let time = std::time::Instant::now();
                 svg::render(
                     &self.commands,
                     &self.transform.then(Transform::scale(scale as f32)),
-                    canvas,
+                    &mut context,
                 );
                 let elapsed = time.elapsed();
 
                 self.timer.update(elapsed);
 
-                canvas.fill_text(
+                context.fill_text(
                     &format!("{:#.3?}", self.timer.average()),
                     &self.font,
                     24.0,
@@ -101,7 +102,7 @@ impl State {
                     Color::rgba(0, 0, 0, 255),
                 );
 
-                cx.window().present(Bitmap::new(canvas.data(), canvas.width(), canvas.height()));
+                cx.window().present(Bitmap::new(&self.framebuffer, width, height));
             }
             Event::MouseMove(pos) => {
                 if self.dragging {
