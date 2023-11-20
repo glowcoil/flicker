@@ -2,6 +2,7 @@ use crate::geom::{Transform, Vec2};
 use crate::path::{Path, Verb};
 
 const TOLERANCE: f32 = 0.2;
+const MAX_SEGMENTS: usize = 100;
 
 trait Curve {
     fn transform(&self, transform: &Transform) -> Self;
@@ -196,7 +197,7 @@ impl Curve for Cubic {
 fn flatten_curve<C: Curve>(curve: &C, transform: &Transform, sink: &mut impl FnMut(Vec2, Vec2)) {
     let curve = curve.transform(transform);
 
-    let segments = curve.segments_for_tolerance(TOLERANCE);
+    let segments = curve.segments_for_tolerance(TOLERANCE).clamp(1, MAX_SEGMENTS);
     let dt = 1.0 / segments as f32;
 
     let mut prev = curve.start();
@@ -330,7 +331,7 @@ impl<S: FnMut(Vec2, Vec2)> Stroker<S> {
 
         let curve_transformed = curve.transform(&self.transform);
 
-        let segments = curve_transformed.segments_for_tolerance(TOLERANCE);
+        let segments = curve_transformed.segments_for_tolerance(TOLERANCE).clamp(1, MAX_SEGMENTS);
         let dt = 1.0 / segments as f32;
 
         let start = curve_transformed.start();
