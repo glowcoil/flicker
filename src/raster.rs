@@ -169,6 +169,16 @@ fn bitmask_count_for_width<A: Arch>(width: usize) -> usize {
     (width + Consts::<A>::PIXELS_PER_BITMASK - 1) >> Consts::<A>::PIXELS_PER_BITMASK_SHIFT
 }
 
+// On baseline x86_64, f32::floor gets lowered to a function call, so this is significantly faster.
+#[inline]
+fn floor(x: f32) -> i32 {
+    let mut result = x as i32;
+    if x < 0.0 {
+        result -= 1;
+    }
+    result
+}
+
 impl Rasterizer {
     pub fn new() -> Rasterizer {
         let methods = Methods::specialize();
@@ -236,16 +246,16 @@ impl Rasterizer {
             let dxdy = dx / dy;
             let dydx = dy / dx;
 
-            let mut y = p1.y.floor() as i32;
+            let mut y = floor(p1.y);
             let mut y_offset = p1.y - y as f32;
 
-            let mut y_end = p2.y.floor() as i32;
+            let mut y_end = floor(p2.y);
             let mut y_offset_end = p2.y - y_end as f32;
 
-            let mut x = p1.x.floor() as i32;
+            let mut x = floor(p1.x);
             let mut x_offset = p1.x - x as f32;
 
-            let mut x_end = p2.x.floor() as i32;
+            let mut x_end = floor(p2.x);
             let mut x_offset_end = p2.x - x_end as f32;
 
             if y >= self.height as i32 {
@@ -258,7 +268,7 @@ impl Rasterizer {
 
             if y < 0 {
                 let clip_x = p1.x - dxdy * p1.y;
-                x = clip_x.floor() as i32;
+                x = floor(clip_x);
                 x_offset = clip_x - x as f32;
 
                 y = 0;
@@ -267,7 +277,7 @@ impl Rasterizer {
 
             if y_end >= self.height as i32 {
                 let clip_x = p1.x + dxdy * (self.height as f32 - p1.y);
-                x_end = clip_x.floor() as i32;
+                x_end = floor(clip_x);
                 x_offset_end = clip_x - x as f32;
 
                 y_end = self.height as i32 - 1;
@@ -283,7 +293,7 @@ impl Rasterizer {
                 let mut y_offset_split = y_offset_end;
                 if x_end >= 0 {
                     let y_clip = p1.y - dydx * p1.x;
-                    y_split = (y_clip.floor() as i32).min(self.height as i32 - 1);
+                    y_split = floor(y_clip).min(self.height as i32 - 1);
                     y_offset_split = y_clip - y_split as f32;
                 }
 
@@ -314,7 +324,7 @@ impl Rasterizer {
                 x_offset_end = 1.0;
 
                 let clip_y = p2.y - dydx * (p2.x - self.width as f32);
-                y_end = clip_y.floor() as i32;
+                y_end = floor(clip_y);
                 y_offset_end = clip_y - y_end as f32;
             }
 
