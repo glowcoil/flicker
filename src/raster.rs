@@ -157,7 +157,6 @@ impl FlipCoords for NegXNegY {
 pub struct Rasterizer {
     methods: Methods,
     width: usize,
-    stride: usize,
     height: usize,
     coverage: Vec<f32>,
     bitmasks_width: usize,
@@ -186,7 +185,6 @@ impl Rasterizer {
         Rasterizer {
             methods,
             width: 0,
-            stride: 0,
             height: 0,
             coverage: Vec::new(),
             bitmasks_width: 0,
@@ -196,15 +194,14 @@ impl Rasterizer {
 
     pub fn set_size(&mut self, width: usize, height: usize) {
         self.width = width;
-        self.stride = width + 1;
         self.height = height;
 
-        let coverage_size = self.stride * self.height;
+        let coverage_size = self.width * self.height;
         if self.coverage.len() < coverage_size {
             self.coverage.resize(coverage_size, 0.0);
         }
 
-        self.bitmasks_width = (self.methods.bitmask_count_for_width)(self.stride);
+        self.bitmasks_width = (self.methods.bitmask_count_for_width)(self.width);
 
         let bitmasks_size = self.bitmasks_width * self.height;
         if self.bitmasks.len() < bitmasks_size {
@@ -297,7 +294,7 @@ impl Rasterizer {
 
             while y < y_split {
                 let row = Flip::row(y as usize, self.height);
-                self.coverage[row * self.stride] += Flip::winding(1.0 - y_offset);
+                self.coverage[row * self.width] += Flip::winding(1.0 - y_offset);
                 self.bitmasks[row * self.bitmasks_width] |= 1;
 
                 y += 1;
@@ -305,7 +302,7 @@ impl Rasterizer {
             }
 
             let row = Flip::row(y as usize, self.height);
-            self.coverage[row * self.stride] += Flip::winding(y_offset_split - y_offset);
+            self.coverage[row * self.width] += Flip::winding(y_offset_split - y_offset);
             self.bitmasks[row * self.bitmasks_width] |= 1;
 
             x = 0;
@@ -336,8 +333,8 @@ impl Rasterizer {
                 let area = 0.5 * height * (1.0 - x_offset);
 
                 let row = Flip::row(y as usize, self.height);
-                self.coverage[row * self.stride + x as usize] += area;
-                self.coverage[row * self.stride + x as usize + 1] += height - area;
+                self.coverage[row * self.width + x as usize] += area;
+                self.coverage[row * self.width + x as usize + 1] += height - area;
 
                 x += 1;
                 x_offset = 0.0;
@@ -351,8 +348,10 @@ impl Rasterizer {
             let area = 0.5 * height * (2.0 - x_offset - x_offset_next);
 
             let row = Flip::row(y as usize, self.height);
-            self.coverage[row * self.stride + x as usize] += area;
-            self.coverage[row * self.stride + x as usize + 1] += height - area;
+            self.coverage[row * self.width + x as usize] += area;
+            if x as usize + 1 < self.width {
+                self.coverage[row * self.width + x as usize + 1] += height - area;
+            }
             self.fill_cells::<A>(row, row_start, x as usize + 2);
 
             x_offset = x_offset_next;
@@ -369,8 +368,8 @@ impl Rasterizer {
             let area = 0.5 * height * (1.0 - x_offset);
 
             let row = Flip::row(y as usize, self.height);
-            self.coverage[row * self.stride + x as usize] += area;
-            self.coverage[row * self.stride + x as usize + 1] += height - area;
+            self.coverage[row * self.width + x as usize] += area;
+            self.coverage[row * self.width + x as usize + 1] += height - area;
 
             x += 1;
             x_offset = 0.0;
@@ -384,8 +383,10 @@ impl Rasterizer {
         let area = 0.5 * height * (2.0 - x_offset - x_offset_end);
 
         let row = Flip::row(y as usize, self.height);
-        self.coverage[row * self.stride + x as usize] += area;
-        self.coverage[row * self.stride + x as usize + 1] += height - area;
+        self.coverage[row * self.width + x as usize] += area;
+        if x as usize + 1 < self.width {
+            self.coverage[row * self.width + x as usize + 1] += height - area;
+        }
         self.fill_cells::<A>(row, row_start, x as usize + 2);
     }
 
@@ -425,7 +426,7 @@ impl Rasterizer {
                 let mut accum = 0.0;
                 let mut coverage = 0.0;
 
-                let coverage_start = y * self.stride;
+                let coverage_start = y * self.width;
                 let coverage_end = coverage_start + self.width;
                 let coverage_row = &mut self.coverage[coverage_start..coverage_end];
 
@@ -557,9 +558,6 @@ impl Rasterizer {
                         break;
                     }
                 }
-
-                self.coverage[coverage_end] = 0.0;
-                self.bitmasks[bitmasks_end - 1] = 0;
             }
         })
     }
