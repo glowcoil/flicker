@@ -217,156 +217,121 @@ impl Rasterizer {
     }
 
     fn add_segments_inner<A: Arch>(&mut self, segments: &[Segment]) {
-        invoke!(A, {
-            for segment in segments {
-                if segment.p1.x < segment.p2.x {
-                    if segment.p1.y < segment.p2.y {
-                        self.add_segment::<A, PosXPosY>(segment.p1, segment.p2);
-                    } else {
-                        self.add_segment::<A, PosXNegY>(segment.p1, segment.p2);
-                    }
+        for segment in segments {
+            if segment.p1.x < segment.p2.x {
+                if segment.p1.y < segment.p2.y {
+                    self.add_segment::<A, PosXPosY>(segment.p1, segment.p2);
                 } else {
-                    if segment.p1.y < segment.p2.y {
-                        self.add_segment::<A, NegXPosY>(segment.p2, segment.p1);
-                    } else {
-                        self.add_segment::<A, NegXNegY>(segment.p2, segment.p1);
-                    }
+                    self.add_segment::<A, PosXNegY>(segment.p1, segment.p2);
+                }
+            } else {
+                if segment.p1.y < segment.p2.y {
+                    self.add_segment::<A, NegXPosY>(segment.p2, segment.p1);
+                } else {
+                    self.add_segment::<A, NegXNegY>(segment.p2, segment.p1);
                 }
             }
-        })
+        }
     }
 
+    #[inline(always)]
     fn add_segment<A: Arch, Flip: FlipCoords>(&mut self, p1: Vec2, p2: Vec2) {
-        invoke!(A, {
-            let p1 = Flip::y_coord(p1, self.height as f32);
-            let p2 = Flip::y_coord(p2, self.height as f32);
+        let p1 = Flip::y_coord(p1, self.height as f32);
+        let p2 = Flip::y_coord(p2, self.height as f32);
 
-            let dx = p2.x - p1.x;
-            let dy = p2.y - p1.y;
-            let dxdy = dx / dy;
-            let dydx = dy / dx;
+        let dx = p2.x - p1.x;
+        let dy = p2.y - p1.y;
+        let dxdy = dx / dy;
+        let dydx = dy / dx;
 
-            let mut y = floor(p1.y);
-            let mut y_offset = p1.y - y as f32;
+        let mut y = floor(p1.y);
+        let mut y_offset = p1.y - y as f32;
 
-            let mut y_end = floor(p2.y);
-            let mut y_offset_end = p2.y - y_end as f32;
+        let mut y_end = floor(p2.y);
+        let mut y_offset_end = p2.y - y_end as f32;
 
-            let mut x = floor(p1.x);
-            let mut x_offset = p1.x - x as f32;
+        let mut x = floor(p1.x);
+        let mut x_offset = p1.x - x as f32;
 
-            let mut x_end = floor(p2.x);
-            let mut x_offset_end = p2.x - x_end as f32;
+        let mut x_end = floor(p2.x);
+        let mut x_offset_end = p2.x - x_end as f32;
 
-            if y >= self.height as i32 {
-                return;
+        if y >= self.height as i32 {
+            return;
+        }
+
+        if y_end < 0 {
+            return;
+        }
+
+        if y < 0 {
+            let clip_x = p1.x - dxdy * p1.y;
+            x = floor(clip_x);
+            x_offset = clip_x - x as f32;
+
+            y = 0;
+            y_offset = 0.0;
+        }
+
+        if y_end >= self.height as i32 {
+            let clip_x = p1.x + dxdy * (self.height as f32 - p1.y);
+            x_end = floor(clip_x);
+            x_offset_end = clip_x - x as f32;
+
+            y_end = self.height as i32 - 1;
+            y_offset_end = 1.0;
+        }
+
+        if x >= self.width as i32 {
+            return;
+        }
+
+        if x < 0 {
+            let mut y_split = y_end;
+            let mut y_offset_split = y_offset_end;
+            if x_end >= 0 {
+                let y_clip = p1.y - dydx * p1.x;
+                y_split = floor(y_clip).min(self.height as i32 - 1);
+                y_offset_split = y_clip - y_split as f32;
             }
 
-            if y_end < 0 {
-                return;
-            }
-
-            if y < 0 {
-                let clip_x = p1.x - dxdy * p1.y;
-                x = floor(clip_x);
-                x_offset = clip_x - x as f32;
-
-                y = 0;
-                y_offset = 0.0;
-            }
-
-            if y_end >= self.height as i32 {
-                let clip_x = p1.x + dxdy * (self.height as f32 - p1.y);
-                x_end = floor(clip_x);
-                x_offset_end = clip_x - x as f32;
-
-                y_end = self.height as i32 - 1;
-                y_offset_end = 1.0;
-            }
-
-            if x >= self.width as i32 {
-                return;
-            }
-
-            if x < 0 {
-                let mut y_split = y_end;
-                let mut y_offset_split = y_offset_end;
-                if x_end >= 0 {
-                    let y_clip = p1.y - dydx * p1.x;
-                    y_split = floor(y_clip).min(self.height as i32 - 1);
-                    y_offset_split = y_clip - y_split as f32;
-                }
-
-                while y < y_split {
-                    let row = Flip::row(y as usize, self.height);
-                    self.coverage[row * self.stride] += Flip::winding(1.0 - y_offset);
-                    self.bitmasks[row * self.bitmasks_width] |= 1;
-
-                    y += 1;
-                    y_offset = 0.0;
-                }
-
+            while y < y_split {
                 let row = Flip::row(y as usize, self.height);
-                self.coverage[row * self.stride] += Flip::winding(y_offset_split - y_offset);
+                self.coverage[row * self.stride] += Flip::winding(1.0 - y_offset);
                 self.bitmasks[row * self.bitmasks_width] |= 1;
-
-                x = 0;
-                x_offset = 0.0;
-                y_offset = y_offset_split;
-            }
-
-            if x_end < 0 {
-                return;
-            }
-
-            if x_end >= self.width as i32 {
-                x_end = self.width as i32 - 1;
-                x_offset_end = 1.0;
-
-                let clip_y = p2.y - dydx * (p2.x - self.width as f32);
-                y_end = floor(clip_y);
-                y_offset_end = clip_y - y_end as f32;
-            }
-
-            let mut x_offset_next = x_offset + dxdy * (1.0 - y_offset);
-            let mut y_offset_next = y_offset + dydx * (1.0 - x_offset);
-
-            while y < y_end {
-                let row_start = x as usize;
-                while y_offset_next < 1.0 {
-                    let height = Flip::winding(y_offset_next - y_offset);
-                    let area = 0.5 * height * (1.0 - x_offset);
-
-                    let row = Flip::row(y as usize, self.height);
-                    self.coverage[row * self.stride + x as usize] += area;
-                    self.coverage[row * self.stride + x as usize + 1] += height - area;
-
-                    x += 1;
-                    x_offset = 0.0;
-                    x_offset_next -= 1.0;
-
-                    y_offset = y_offset_next;
-                    y_offset_next += dydx;
-                }
-
-                let height = Flip::winding(1.0 - y_offset);
-                let area = 0.5 * height * (2.0 - x_offset - x_offset_next);
-
-                let row = Flip::row(y as usize, self.height);
-                self.coverage[row * self.stride + x as usize] += area;
-                self.coverage[row * self.stride + x as usize + 1] += height - area;
-                self.fill_cells::<A>(row, row_start, x as usize + 2);
-
-                x_offset = x_offset_next;
-                x_offset_next += dxdy;
 
                 y += 1;
                 y_offset = 0.0;
-                y_offset_next -= 1.0;
             }
 
+            let row = Flip::row(y as usize, self.height);
+            self.coverage[row * self.stride] += Flip::winding(y_offset_split - y_offset);
+            self.bitmasks[row * self.bitmasks_width] |= 1;
+
+            x = 0;
+            x_offset = 0.0;
+            y_offset = y_offset_split;
+        }
+
+        if x_end < 0 {
+            return;
+        }
+
+        if x_end >= self.width as i32 {
+            x_end = self.width as i32 - 1;
+            x_offset_end = 1.0;
+
+            let clip_y = p2.y - dydx * (p2.x - self.width as f32);
+            y_end = floor(clip_y);
+            y_offset_end = clip_y - y_end as f32;
+        }
+
+        let mut x_offset_next = x_offset + dxdy * (1.0 - y_offset);
+        let mut y_offset_next = y_offset + dydx * (1.0 - x_offset);
+
+        while y < y_end {
             let row_start = x as usize;
-            while x < x_end {
+            while y_offset_next < 1.0 {
                 let height = Flip::winding(y_offset_next - y_offset);
                 let area = 0.5 * height * (1.0 - x_offset);
 
@@ -382,14 +347,46 @@ impl Rasterizer {
                 y_offset_next += dydx;
             }
 
-            let height = Flip::winding(y_offset_end - y_offset);
-            let area = 0.5 * height * (2.0 - x_offset - x_offset_end);
+            let height = Flip::winding(1.0 - y_offset);
+            let area = 0.5 * height * (2.0 - x_offset - x_offset_next);
 
             let row = Flip::row(y as usize, self.height);
             self.coverage[row * self.stride + x as usize] += area;
             self.coverage[row * self.stride + x as usize + 1] += height - area;
             self.fill_cells::<A>(row, row_start, x as usize + 2);
-        })
+
+            x_offset = x_offset_next;
+            x_offset_next += dxdy;
+
+            y += 1;
+            y_offset = 0.0;
+            y_offset_next -= 1.0;
+        }
+
+        let row_start = x as usize;
+        while x < x_end {
+            let height = Flip::winding(y_offset_next - y_offset);
+            let area = 0.5 * height * (1.0 - x_offset);
+
+            let row = Flip::row(y as usize, self.height);
+            self.coverage[row * self.stride + x as usize] += area;
+            self.coverage[row * self.stride + x as usize + 1] += height - area;
+
+            x += 1;
+            x_offset = 0.0;
+            x_offset_next -= 1.0;
+
+            y_offset = y_offset_next;
+            y_offset_next += dydx;
+        }
+
+        let height = Flip::winding(y_offset_end - y_offset);
+        let area = 0.5 * height * (2.0 - x_offset - x_offset_end);
+
+        let row = Flip::row(y as usize, self.height);
+        self.coverage[row * self.stride + x as usize] += area;
+        self.coverage[row * self.stride + x as usize + 1] += height - area;
+        self.fill_cells::<A>(row, row_start, x as usize + 2);
     }
 
     #[inline]
