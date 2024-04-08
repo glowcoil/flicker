@@ -28,14 +28,6 @@ struct ScalarImpl;
 impl Arch for ScalarImpl {
     type f32 = f32x1;
     type u32 = u32x1;
-
-    #[inline]
-    fn invoke<F, R>(f: F) -> R
-    where
-        F: FnOnce() -> R,
-    {
-        f()
-    }
 }
 
 #[derive(Copy, Clone, Default)]

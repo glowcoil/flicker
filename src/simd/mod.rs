@@ -11,16 +11,6 @@ mod neon;
 use std::fmt::Debug;
 use std::ops::*;
 
-macro_rules! invoke {
-    ($arch:ident, $body:block) => {
-        A::invoke(
-            #[inline(always)]
-            || $body,
-        )
-    };
-}
-pub(crate) use invoke;
-
 pub use scalar::Scalar;
 
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
@@ -35,10 +25,6 @@ pub use neon::*;
 pub trait Arch {
     type f32: Simd<Elem = f32> + Float + From<Self::u32>;
     type u32: Simd<Elem = u32> + Int + From<Self::f32>;
-
-    fn invoke<F, R>(f: F) -> R
-    where
-        F: FnOnce() -> R;
 }
 
 pub trait Simd: Copy + Clone + Debug + Default + Send + Sync + Sized

@@ -38,23 +38,6 @@ struct NeonImpl;
 impl Arch for NeonImpl {
     type f32 = f32x4;
     type u32 = u32x4;
-
-    #[inline]
-    fn invoke<F, R>(f: F) -> R
-    where
-        F: FnOnce() -> R,
-    {
-        #[inline]
-        #[target_feature(enable = "neon")]
-        unsafe fn inner<F, R>(f: F) -> R
-        where
-            F: FnOnce() -> R,
-        {
-            f()
-        }
-
-        unsafe { inner(f) }
-    }
 }
 
 #[derive(Copy, Clone)]

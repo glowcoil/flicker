@@ -40,23 +40,6 @@ struct Avx2Impl;
 impl Arch for Avx2Impl {
     type f32 = f32x8;
     type u32 = u32x8;
-
-    #[inline]
-    fn invoke<F, R>(f: F) -> R
-    where
-        F: FnOnce() -> R,
-    {
-        #[inline]
-        #[target_feature(enable = "avx2")]
-        unsafe fn inner<F, R>(f: F) -> R
-        where
-            F: FnOnce() -> R,
-        {
-            f()
-        }
-
-        unsafe { inner(f) }
-    }
 }
 
 #[derive(Copy, Clone)]
