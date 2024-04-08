@@ -9,42 +9,18 @@ use std::arch::x86::*;
 #[cfg(target_arch = "x86_64")]
 use std::arch::x86_64::*;
 
-use super::{Arch, Float, Int, PossibleArch, Simd, WithArch};
+use super::{Arch, Float, Int, Simd};
 
 pub struct Avx2;
 
-impl PossibleArch for Avx2 {
-    #[inline]
-    fn try_with<F: WithArch>(f: F) -> Option<F::Result> {
-        if is_x86_feature_detected!("avx2") {
-            Some(f.run::<Avx2Impl>())
-        } else {
-            None
-        }
-    }
-}
-
-#[cfg(target_feature = "avx2")]
-use super::SupportedArch;
-
-#[cfg(target_feature = "avx2")]
-impl SupportedArch for Avx2 {
-    #[inline]
-    fn with<F: WithArch>(f: F) -> F::Result {
-        f.run::<Avx2Impl>()
-    }
-}
-
-struct Avx2Impl;
-
-impl Arch for Avx2Impl {
+impl Arch for Avx2 {
     type f32 = f32x8;
     type u32 = u32x8;
 }
 
 #[derive(Copy, Clone)]
 #[repr(transparent)]
-struct f32x8(__m256);
+pub struct f32x8(__m256);
 
 impl Default for f32x8 {
     #[inline(always)]
@@ -295,7 +271,7 @@ impl From<u32x8> for f32x8 {
 
 #[derive(Copy, Clone)]
 #[repr(transparent)]
-struct u32x8(__m256i);
+pub struct u32x8(__m256i);
 
 impl Default for u32x8 {
     #[inline(always)]

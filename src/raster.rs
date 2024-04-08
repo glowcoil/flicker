@@ -18,46 +18,6 @@ const PIXELS_PER_BIT_SHIFT: usize = PIXELS_PER_BIT.trailing_zeros() as usize;
 const PIXELS_PER_BITMASK: usize = PIXELS_PER_BIT * BITS_PER_BITMASK;
 const PIXELS_PER_BITMASK_SHIFT: usize = PIXELS_PER_BITMASK.trailing_zeros() as usize;
 
-struct Methods {
-    finish: fn(&mut Rasterizer, color: Color, data: &mut [u32], stride: usize),
-}
-
-impl Methods {
-    fn specialize() -> Methods {
-        struct Specialize;
-
-        impl WithArch for Specialize {
-            type Result = Methods;
-
-            fn run<A: Arch>(self) -> Methods {
-                Methods {
-                    finish: Rasterizer::finish_inner::<A>,
-                }
-            }
-        }
-
-        #[cfg(target_arch = "x86_64")]
-        return Sse2::with(Specialize);
-
-        #[cfg(target_arch = "x86")]
-        if let Some(methods) = Sse2::try_with(specialize) {
-            methods
-        } else {
-            Scalar::with(Specialize)
-        }
-
-        #[cfg(target_arch = "aarch64")]
-        if let Some(methods) = Neon::try_with(Specialize) {
-            methods
-        } else {
-            Scalar::with(Specialize)
-        }
-
-        #[cfg(not(any(target_arch = "x86", target_arch = "x86_64", target_arch = "aarch64")))]
-        Scalar::with(Specialize)
-    }
-}
-
 trait FlipCoords {
     fn winding(value: f32) -> f32;
     fn row(y: usize, height: usize) -> usize;
@@ -141,7 +101,6 @@ impl FlipCoords for NegXNegY {
 }
 
 pub struct Rasterizer {
-    methods: Methods,
     width: usize,
     height: usize,
     coverage: Vec<f32>,
@@ -166,10 +125,7 @@ fn floor(x: f32) -> i32 {
 
 impl Rasterizer {
     pub fn new() -> Rasterizer {
-        let methods = Methods::specialize();
-
         Rasterizer {
-            methods,
             width: 0,
             height: 0,
             coverage: Vec::new(),
@@ -391,7 +347,28 @@ impl Rasterizer {
     }
 
     pub fn finish(&mut self, color: Color, data: &mut [u32], stride: usize) {
-        (self.methods.finish)(self, color, data, stride)
+        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+        {
+            #[cfg(target_feature = "avx2")]
+            return self.finish_inner::<Avx2>(color, data, stride);
+
+            #[cfg(all(not(target_feature = "avx2"), target_feature = "sse2"))]
+            return self.finish_inner::<Sse2>(color, data, stride);
+
+            #[cfg(not(any(target_feature = "avx2", target_feature = "sse2")))]
+            return self.finish_inner::<Scalar>(color, data, stride);
+        }
+
+        #[cfg(target_arch = "aarch64")]
+        {
+            #[cfg(target_feature = "neon")]
+            return self.finish_inner::<Neon>(color, data, stride);
+
+            return self.finish_inner::<Scalar>(color, data, stride);
+        }
+
+        #[cfg(not(any(target_arch = "x86", target_arch = "x86_64", target_arch = "aarch64")))]
+        self.finish_inner::<Scalar>(color, data, stride)
     }
 
     fn finish_inner<A: Arch>(&mut self, color: Color, data: &mut [u32], stride: usize) {

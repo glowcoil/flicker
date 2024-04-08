@@ -7,42 +7,18 @@ use std::slice;
 use std::arch::aarch64::*;
 use std::arch::is_aarch64_feature_detected;
 
-use super::{Arch, Float, Int, PossibleArch, Simd, WithArch};
+use super::{Arch, Float, Int, Simd};
 
 pub struct Neon;
 
-impl PossibleArch for Neon {
-    #[inline]
-    fn try_with<F: WithArch>(f: F) -> Option<F::Result> {
-        if is_aarch64_feature_detected!("neon") {
-            Some(f.run::<NeonImpl>())
-        } else {
-            None
-        }
-    }
-}
-
-#[cfg(target_feature = "neon")]
-use super::SupportedArch;
-
-#[cfg(target_feature = "neon")]
-impl SupportedArch for Neon {
-    #[inline]
-    fn with<F: WithArch>(f: F) -> F::Result {
-        f.run::<NeonImpl>()
-    }
-}
-
-struct NeonImpl;
-
-impl Arch for NeonImpl {
+impl Arch for Neon {
     type f32 = f32x4;
     type u32 = u32x4;
 }
 
 #[derive(Copy, Clone)]
 #[repr(transparent)]
-struct f32x4(float32x4_t);
+pub struct f32x4(float32x4_t);
 
 impl Default for f32x4 {
     #[inline(always)]
@@ -226,7 +202,7 @@ impl From<u32x4> for f32x4 {
 
 #[derive(Copy, Clone)]
 #[repr(transparent)]
-struct u32x4(uint32x4_t);
+pub struct u32x4(uint32x4_t);
 
 impl Default for u32x4 {
     #[inline(always)]

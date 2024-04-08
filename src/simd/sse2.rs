@@ -9,42 +9,18 @@ use std::arch::x86::*;
 #[cfg(target_arch = "x86_64")]
 use std::arch::x86_64::*;
 
-use super::{Arch, Float, Int, PossibleArch, Simd, WithArch};
+use super::{Arch, Float, Int, Simd};
 
 pub struct Sse2;
 
-impl PossibleArch for Sse2 {
-    #[inline]
-    fn try_with<F: WithArch>(f: F) -> Option<F::Result> {
-        if is_x86_feature_detected!("sse2") {
-            Some(f.run::<Sse2Impl>())
-        } else {
-            None
-        }
-    }
-}
-
-#[cfg(target_feature = "sse2")]
-use super::SupportedArch;
-
-#[cfg(target_feature = "sse2")]
-impl SupportedArch for Sse2 {
-    #[inline]
-    fn with<F: WithArch>(f: F) -> F::Result {
-        f.run::<Sse2Impl>()
-    }
-}
-
-struct Sse2Impl;
-
-impl Arch for Sse2Impl {
+impl Arch for Sse2 {
     type f32 = f32x4;
     type u32 = u32x4;
 }
 
 #[derive(Copy, Clone)]
 #[repr(transparent)]
-struct f32x4(__m128);
+pub struct f32x4(__m128);
 
 impl Default for f32x4 {
     #[inline(always)]
@@ -232,7 +208,7 @@ impl From<u32x4> for f32x4 {
 
 #[derive(Copy, Clone)]
 #[repr(transparent)]
-struct u32x4(__m128i);
+pub struct u32x4(__m128i);
 
 impl Default for u32x4 {
     #[inline(always)]

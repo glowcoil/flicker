@@ -5,34 +5,18 @@ use std::num::Wrapping;
 use std::ops::*;
 use std::slice;
 
-use super::{Arch, Float, Int, PossibleArch, Simd, SupportedArch, WithArch};
+use super::{Arch, Float, Int, Simd};
 
 pub struct Scalar;
 
-impl PossibleArch for Scalar {
-    #[inline]
-    fn try_with<F: WithArch>(f: F) -> Option<F::Result> {
-        Some(f.run::<ScalarImpl>())
-    }
-}
-
-impl SupportedArch for Scalar {
-    #[inline]
-    fn with<F: WithArch>(f: F) -> F::Result {
-        f.run::<ScalarImpl>()
-    }
-}
-
-struct ScalarImpl;
-
-impl Arch for ScalarImpl {
+impl Arch for Scalar {
     type f32 = f32x1;
     type u32 = u32x1;
 }
 
 #[derive(Copy, Clone, Default)]
 #[repr(transparent)]
-struct f32x1(f32);
+pub struct f32x1(f32);
 
 impl From<f32> for f32x1 {
     #[inline]
@@ -161,7 +145,7 @@ impl From<u32x1> for f32x1 {
 
 #[derive(Copy, Clone, Default)]
 #[repr(transparent)]
-struct u32x1(Wrapping<u32>);
+pub struct u32x1(Wrapping<u32>);
 
 impl From<u32> for u32x1 {
     #[inline]
