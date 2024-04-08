@@ -45,16 +45,10 @@ impl Methods {
         }
 
         #[cfg(target_arch = "x86_64")]
-        if let Some(methods) = Avx2::try_with(Specialize) {
-            methods
-        } else {
-            Sse2::with(Specialize)
-        }
+        return Sse2::with(Specialize);
 
         #[cfg(target_arch = "x86")]
-        if let Some(methods) = Avx2::try_with(Specialize) {
-            methods
-        } else if let Some(methods) = Sse2::try_with(specialize) {
+        if let Some(methods) = Sse2::try_with(specialize) {
             methods
         } else {
             Scalar::with(Specialize)
@@ -413,153 +407,149 @@ impl Rasterizer {
     }
 
     fn finish_inner<A: Arch>(&mut self, color: Color, data: &mut [u32], stride: usize) {
-        invoke!(A, {
-            let a_unit = A::f32::from(color.a() as f32 * (1.0 / 255.0));
-            let src = Pixels {
-                a: A::f32::from(color.a() as f32),
-                r: a_unit * A::f32::from(color.r() as f32),
-                g: a_unit * A::f32::from(color.g() as f32),
-                b: a_unit * A::f32::from(color.b() as f32),
-            };
+        let a_unit = A::f32::from(color.a() as f32 * (1.0 / 255.0));
+        let src = Pixels {
+            a: A::f32::from(color.a() as f32),
+            r: a_unit * A::f32::from(color.r() as f32),
+            g: a_unit * A::f32::from(color.g() as f32),
+            b: a_unit * A::f32::from(color.b() as f32),
+        };
 
-            for y in 0..self.height {
-                let mut accum = 0.0;
-                let mut coverage = 0.0;
+        for y in 0..self.height {
+            let mut accum = 0.0;
+            let mut coverage = 0.0;
 
-                let coverage_start = y * self.width;
-                let coverage_end = coverage_start + self.width;
-                let coverage_row = &mut self.coverage[coverage_start..coverage_end];
+            let coverage_start = y * self.width;
+            let coverage_end = coverage_start + self.width;
+            let coverage_row = &mut self.coverage[coverage_start..coverage_end];
 
-                let pixels_start = y * stride;
-                let pixels_end = pixels_start + self.width;
-                let pixels_row = &mut data[pixels_start..pixels_end];
+            let pixels_start = y * stride;
+            let pixels_end = pixels_start + self.width;
+            let pixels_row = &mut data[pixels_start..pixels_end];
 
-                let bitmasks_start = y * self.bitmasks_width;
-                let bitmasks_end = bitmasks_start + self.bitmasks_width;
-                let bitmasks_row = &mut self.bitmasks[bitmasks_start..bitmasks_end];
+            let bitmasks_start = y * self.bitmasks_width;
+            let bitmasks_end = bitmasks_start + self.bitmasks_width;
+            let bitmasks_row = &mut self.bitmasks[bitmasks_start..bitmasks_end];
 
-                let mut x = 0;
-                let mut bitmask_index = 0;
-                let mut bitmask = mem::replace(&mut bitmasks_row[0], 0);
+            let mut x = 0;
+            let mut bitmask_index = 0;
+            let mut bitmask = mem::replace(&mut bitmasks_row[0], 0);
+            loop {
+                // Find next 1 bit (or the end of the scanline).
+                let next_x;
                 loop {
-                    // Find next 1 bit (or the end of the scanline).
-                    let next_x;
-                    loop {
-                        if bitmask != 0 {
-                            let offset = bitmask.trailing_zeros() as usize;
-                            bitmask |= !(!0 << offset);
-                            let bitmask_base =
-                                bitmask_index << Consts::<A>::PIXELS_PER_BITMASK_SHIFT;
-                            next_x = (bitmask_base + (offset << Consts::<A>::PIXELS_PER_BIT_SHIFT))
-                                .min(self.width);
-                            break;
-                        }
-
-                        bitmask_index += 1;
-                        if bitmask_index == self.bitmasks_width {
-                            next_x = self.width;
-                            break;
-                        }
-
-                        bitmask = mem::replace(&mut bitmasks_row[bitmask_index], 0);
-                    }
-
-                    // Composite an interior span (or skip an empty span).
-                    if next_x > x {
-                        if coverage > 254.5 / 255.0 && color.a() == 255 {
-                            pixels_row[x..next_x].fill(color.into());
-                        } else if coverage > 0.5 / 255.0 {
-                            let mut pixels_chunks =
-                                pixels_row[x..next_x].chunks_exact_mut(A::u32::LANES);
-
-                            for pixels_slice in &mut pixels_chunks {
-                                let mask = A::f32::from(coverage);
-                                let dst = Pixels::<A>::unpack(A::u32::load(pixels_slice));
-                                dst.blend(src, mask).pack().store(pixels_slice);
-                            }
-
-                            let pixels_remainder = pixels_chunks.into_remainder();
-                            if !pixels_remainder.is_empty() {
-                                let mask = A::f32::from(coverage);
-                                let dst = Pixels::unpack(A::u32::load_partial(pixels_remainder));
-                                dst.blend(src, mask).pack().store_partial(pixels_remainder);
-                            }
-                        }
-                    }
-
-                    x = next_x;
-                    if next_x == self.width {
+                    if bitmask != 0 {
+                        let offset = bitmask.trailing_zeros() as usize;
+                        bitmask |= !(!0 << offset);
+                        let bitmask_base = bitmask_index << Consts::<A>::PIXELS_PER_BITMASK_SHIFT;
+                        next_x = (bitmask_base + (offset << Consts::<A>::PIXELS_PER_BIT_SHIFT))
+                            .min(self.width);
                         break;
                     }
 
-                    // Find next 0 bit (or the end of the scanline).
-                    let next_x;
-                    loop {
-                        if bitmask != !0 {
-                            let offset = bitmask.trailing_ones() as usize;
-                            bitmask &= !0 << offset;
-                            let bitmask_base =
-                                bitmask_index << Consts::<A>::PIXELS_PER_BITMASK_SHIFT;
-                            next_x = (bitmask_base + (offset << Consts::<A>::PIXELS_PER_BIT_SHIFT))
-                                .min(self.width);
-                            break;
-                        }
-
-                        bitmask_index += 1;
-                        if bitmask_index == self.bitmasks_width {
-                            next_x = self.width;
-                            break;
-                        }
-
-                        bitmask = mem::replace(&mut bitmasks_row[bitmask_index], 0);
+                    bitmask_index += 1;
+                    if bitmask_index == self.bitmasks_width {
+                        next_x = self.width;
+                        break;
                     }
 
-                    // Composite an edge span.
-                    if next_x > x {
-                        let coverage_slice = &mut coverage_row[x..next_x];
-                        let mut coverage_chunks = coverage_slice.chunks_exact_mut(A::f32::LANES);
+                    bitmask = mem::replace(&mut bitmasks_row[bitmask_index], 0);
+                }
 
-                        let pixels_slice = &mut pixels_row[x..next_x];
-                        let mut pixels_chunks = pixels_slice.chunks_exact_mut(A::u32::LANES);
+                // Composite an interior span (or skip an empty span).
+                if next_x > x {
+                    if coverage > 254.5 / 255.0 && color.a() == 255 {
+                        pixels_row[x..next_x].fill(color.into());
+                    } else if coverage > 0.5 / 255.0 {
+                        let mut pixels_chunks =
+                            pixels_row[x..next_x].chunks_exact_mut(A::u32::LANES);
 
-                        for (coverage_chunk, pixels_chunk) in
-                            (&mut coverage_chunks).zip(&mut pixels_chunks)
-                        {
-                            let deltas = A::f32::load(coverage_chunk);
-                            let accums = A::f32::from(accum) + deltas.prefix_sum();
-                            accum = accums.last();
-                            let mask = accums.abs().min(A::f32::from(1.0));
-                            coverage = mask.last();
-
-                            coverage_chunk.fill(0.0);
-
-                            let dst = Pixels::unpack(A::u32::load(pixels_chunk));
-                            dst.blend(src, mask).pack().store(pixels_chunk);
+                        for pixels_slice in &mut pixels_chunks {
+                            let mask = A::f32::from(coverage);
+                            let dst = Pixels::<A>::unpack(A::u32::load(pixels_slice));
+                            dst.blend(src, mask).pack().store(pixels_slice);
                         }
 
-                        let coverage_remainder = coverage_chunks.into_remainder();
                         let pixels_remainder = pixels_chunks.into_remainder();
-                        if !pixels_remainder.is_empty() && !coverage_remainder.is_empty() {
-                            let deltas = A::f32::load_partial(coverage_remainder);
-                            let accums = A::f32::from(accum) + deltas.prefix_sum();
-                            accum = accums.last();
-                            let mask = accums.abs().min(A::f32::from(1.0));
-                            coverage = mask.last();
-
-                            coverage_remainder.fill(0.0);
-
+                        if !pixels_remainder.is_empty() {
+                            let mask = A::f32::from(coverage);
                             let dst = Pixels::unpack(A::u32::load_partial(pixels_remainder));
                             dst.blend(src, mask).pack().store_partial(pixels_remainder);
                         }
                     }
+                }
 
-                    x = next_x;
-                    if next_x == self.width {
+                x = next_x;
+                if next_x == self.width {
+                    break;
+                }
+
+                // Find next 0 bit (or the end of the scanline).
+                let next_x;
+                loop {
+                    if bitmask != !0 {
+                        let offset = bitmask.trailing_ones() as usize;
+                        bitmask &= !0 << offset;
+                        let bitmask_base = bitmask_index << Consts::<A>::PIXELS_PER_BITMASK_SHIFT;
+                        next_x = (bitmask_base + (offset << Consts::<A>::PIXELS_PER_BIT_SHIFT))
+                            .min(self.width);
                         break;
                     }
+
+                    bitmask_index += 1;
+                    if bitmask_index == self.bitmasks_width {
+                        next_x = self.width;
+                        break;
+                    }
+
+                    bitmask = mem::replace(&mut bitmasks_row[bitmask_index], 0);
+                }
+
+                // Composite an edge span.
+                if next_x > x {
+                    let coverage_slice = &mut coverage_row[x..next_x];
+                    let mut coverage_chunks = coverage_slice.chunks_exact_mut(A::f32::LANES);
+
+                    let pixels_slice = &mut pixels_row[x..next_x];
+                    let mut pixels_chunks = pixels_slice.chunks_exact_mut(A::u32::LANES);
+
+                    for (coverage_chunk, pixels_chunk) in
+                        (&mut coverage_chunks).zip(&mut pixels_chunks)
+                    {
+                        let deltas = A::f32::load(coverage_chunk);
+                        let accums = A::f32::from(accum) + deltas.prefix_sum();
+                        accum = accums.last();
+                        let mask = accums.abs().min(A::f32::from(1.0));
+                        coverage = mask.last();
+
+                        coverage_chunk.fill(0.0);
+
+                        let dst = Pixels::unpack(A::u32::load(pixels_chunk));
+                        dst.blend(src, mask).pack().store(pixels_chunk);
+                    }
+
+                    let coverage_remainder = coverage_chunks.into_remainder();
+                    let pixels_remainder = pixels_chunks.into_remainder();
+                    if !pixels_remainder.is_empty() && !coverage_remainder.is_empty() {
+                        let deltas = A::f32::load_partial(coverage_remainder);
+                        let accums = A::f32::from(accum) + deltas.prefix_sum();
+                        accum = accums.last();
+                        let mask = accums.abs().min(A::f32::from(1.0));
+                        coverage = mask.last();
+
+                        coverage_remainder.fill(0.0);
+
+                        let dst = Pixels::unpack(A::u32::load_partial(pixels_remainder));
+                        dst.blend(src, mask).pack().store_partial(pixels_remainder);
+                    }
+                }
+
+                x = next_x;
+                if next_x == self.width {
+                    break;
                 }
             }
-        })
+        }
     }
 }
 
@@ -586,38 +576,32 @@ impl<A: Arch> Copy for Pixels<A> {}
 impl<A: Arch> Pixels<A> {
     #[inline]
     fn unpack(data: A::u32) -> Self {
-        invoke!(A, {
-            Pixels {
-                a: A::f32::from((data >> 24) & A::u32::from(0xFF)),
-                r: A::f32::from((data >> 16) & A::u32::from(0xFF)),
-                g: A::f32::from((data >> 8) & A::u32::from(0xFF)),
-                b: A::f32::from((data >> 0) & A::u32::from(0xFF)),
-            }
-        })
+        Pixels {
+            a: A::f32::from((data >> 24) & A::u32::from(0xFF)),
+            r: A::f32::from((data >> 16) & A::u32::from(0xFF)),
+            g: A::f32::from((data >> 8) & A::u32::from(0xFF)),
+            b: A::f32::from((data >> 0) & A::u32::from(0xFF)),
+        }
     }
 
     #[inline]
     fn pack(self) -> A::u32 {
-        invoke!(A, {
-            let a = A::u32::from(self.a);
-            let r = A::u32::from(self.r);
-            let g = A::u32::from(self.g);
-            let b = A::u32::from(self.b);
+        let a = A::u32::from(self.a);
+        let r = A::u32::from(self.r);
+        let g = A::u32::from(self.g);
+        let b = A::u32::from(self.b);
 
-            (a << 24) | (r << 16) | (g << 8) | (b << 0)
-        })
+        (a << 24) | (r << 16) | (g << 8) | (b << 0)
     }
 
     #[inline]
     fn blend(self, src: Self, mask: A::f32) -> Self {
-        invoke!(A, {
-            let inv_a = A::f32::from(1.0) - mask * A::f32::from(1.0 / 255.0) * src.a;
-            Pixels {
-                a: mask * src.a + inv_a * self.a,
-                r: mask * src.r + inv_a * self.r,
-                g: mask * src.g + inv_a * self.g,
-                b: mask * src.b + inv_a * self.b,
-            }
-        })
+        let inv_a = A::f32::from(1.0) - mask * A::f32::from(1.0 / 255.0) * src.a;
+        Pixels {
+            a: mask * src.a + inv_a * self.a,
+            r: mask * src.r + inv_a * self.r,
+            g: mask * src.g + inv_a * self.g,
+            b: mask * src.b + inv_a * self.b,
+        }
     }
 }
