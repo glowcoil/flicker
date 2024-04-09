@@ -5,7 +5,6 @@ use std::ops::*;
 use std::slice;
 
 use std::arch::aarch64::*;
-use std::arch::is_aarch64_feature_detected;
 
 use super::{Arch, Float, Int, Simd};
 

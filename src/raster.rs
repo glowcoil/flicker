@@ -363,8 +363,6 @@ impl Rasterizer {
         {
             #[cfg(target_feature = "neon")]
             return self.finish_inner::<Neon>(color, data, stride);
-
-            return self.finish_inner::<Scalar>(color, data, stride);
         }
 
         #[cfg(not(any(target_arch = "x86", target_arch = "x86_64", target_arch = "aarch64")))]
