@@ -265,12 +265,12 @@ impl Rasterizer {
         let mut y_offset_next = y_offset + dydx * (1.0 - x_offset);
 
         while y < y_end {
+            let row = Flip::row(y as usize, self.height);
             let row_start = x as usize;
             while y_offset_next < 1.0 {
                 let height = Flip::winding(y_offset_next - y_offset);
                 let area = 0.5 * height * (1.0 - x_offset);
 
-                let row = Flip::row(y as usize, self.height);
                 self.coverage[row * self.width + x as usize] += area;
                 self.coverage[row * self.width + x as usize + 1] += height - area;
 
@@ -285,12 +285,13 @@ impl Rasterizer {
             let height = Flip::winding(1.0 - y_offset);
             let area = 0.5 * height * (2.0 - x_offset - x_offset_next);
 
-            let row = Flip::row(y as usize, self.height);
+            let mut row_end = x as usize + 1;
             self.coverage[row * self.width + x as usize] += area;
             if x as usize + 1 < self.width {
                 self.coverage[row * self.width + x as usize + 1] += height - area;
+                row_end += 1;
             }
-            self.fill_cells(row, row_start, x as usize + 2);
+            self.fill_cells(row, row_start, row_end);
 
             x_offset = x_offset_next;
             x_offset_next += dxdy;
@@ -300,12 +301,12 @@ impl Rasterizer {
             y_offset_next -= 1.0;
         }
 
+        let row = Flip::row(y as usize, self.height);
         let row_start = x as usize;
         while x < x_end {
             let height = Flip::winding(y_offset_next - y_offset);
             let area = 0.5 * height * (1.0 - x_offset);
 
-            let row = Flip::row(y as usize, self.height);
             self.coverage[row * self.width + x as usize] += area;
             self.coverage[row * self.width + x as usize + 1] += height - area;
 
@@ -320,12 +321,13 @@ impl Rasterizer {
         let height = Flip::winding(y_offset_end - y_offset);
         let area = 0.5 * height * (2.0 - x_offset - x_offset_end);
 
-        let row = Flip::row(y as usize, self.height);
+        let mut row_end = x as usize + 1;
         self.coverage[row * self.width + x as usize] += area;
         if x as usize + 1 < self.width {
             self.coverage[row * self.width + x as usize + 1] += height - area;
+            row_end += 1;
         }
-        self.fill_cells(row, row_start, x as usize + 2);
+        self.fill_cells(row, row_start, row_end);
     }
 
     #[inline]
